@@ -7,20 +7,27 @@
     "build": "node -r ./scripts/node-realpath-patch.cjs ./node_modules/next/dist/bin/next build",
     "start": "next start",
     "lint": "next lint",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "prisma:generate": "node -r ./scripts/node-realpath-patch.cjs ./node_modules/prisma/build/index.js generate",
+    "prisma:push": "node -r ./scripts/node-realpath-patch.cjs ./node_modules/prisma/build/index.js db push"
   },
   "dependencies": {
+    "@prisma/client": "^6.19.3",
+    "bcryptjs": "^3.0.3",
     "next": "14.2.35",
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
+    "resend": "^6.12.4",
     "zustand": "^4.5.2"
   },
   "devDependencies": {
     "@types/node": "20.19.43",
     "@types/react": "18.3.31",
     "@types/react-dom": "^18.3.0",
+    "@typescript-eslint/eslint-plugin": "^8.61.0",
     "eslint": "^8.57.0",
     "eslint-config-next": "14.2.35",
+    "prisma": "^6.19.3",
     "typescript": "5.9.3"
   }
 }

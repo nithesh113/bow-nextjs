@@ -22,14 +22,14 @@ import ShiftEntryModal from '@/components/fab/modals/ShiftEntryModal'
 import ActualTimeModal from '@/components/fab/modals/ActualTimeModal'
 import TemplateEntryModal from '@/components/fab/modals/TemplateEntryModal'
 
-export default function AppShell() {
+export default function AppShell({ userName }: { userName: string }) {
   const { activeTab, activeBottomTab, openModal, fabExpanded } = useAppStore()
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* ── Header ─────────────────────────── */}
-      <Topbar />
+      <Topbar userName={userName} />
       <TopTabs />
 
       {/* ── Main Tab Content ───────────────── */}

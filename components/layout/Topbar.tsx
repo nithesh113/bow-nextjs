@@ -5,8 +5,9 @@ import { useAppStore } from '@/store/useAppStore'
 import { MONTH_NAMES } from '@/lib/constants'
 import { exportData } from '@/services/exportService'
 import { importData } from '@/services/importService'
+import { logoutAction } from '@/app/auth/actions'
 
-export default function Topbar() {
+export default function Topbar({ userName }: { userName: string }) {
   const { curY, curM, changeMonth, goToday, setModal } = useAppStore()
   const fileRef = useRef<HTMLInputElement>(null)
 
@@ -57,6 +58,9 @@ export default function Topbar() {
       <button onClick={() => setModal('jobManager')} style={iconBtnStyle}>⚙ Jobs</button>
       <button onClick={exportData} style={iconBtnStyle}>↓</button>
       <button onClick={() => fileRef.current?.click()} style={iconBtnStyle}>↑</button>
+      <form action={logoutAction}>
+        <button title={`Signed in as ${userName}`} style={iconBtnStyle}>Logout</button>
+      </form>
       <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
     </header>
   )

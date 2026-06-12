@@ -1,0 +1,75 @@
+import { cookies } from 'next/headers'
+import crypto from 'crypto'
+import { prisma } from './prisma'
+import { SESSION_COOKIE } from './constants'
+
+const SESSION_DAYS = 30
+
+export type AuthUser = {
+  id: string
+  name: string
+  email: string
+}
+
+export function hashToken(token: string) {
+  return crypto.createHash('sha256').update(token).digest('hex')
+}
+
+export function createToken() {
+  return crypto.randomBytes(32).toString('base64url')
+}
+
+export async function createSession(userId: string) {
+  const token = createToken()
+  const tokenHash = hashToken(token)
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000)
+
+  await prisma.session.create({
+    data: {
+      userId,
+      tokenHash,
+      expiresAt,
+    },
+  })
+
+  cookies().set(SESSION_COOKIE, token, {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+    expires: expiresAt,
+  })
+}
+
+export async function destroySession() {
+  const token = cookies().get(SESSION_COOKIE)?.value
+
+  if (token) {
+    await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } })
+  }
+
+  cookies().delete(SESSION_COOKIE)
+}
+
+export async function getCurrentUser(): Promise<AuthUser | null> {
+  const token = cookies().get(SESSION_COOKIE)?.value
+  if (!token) return null
+
+  const session = await prisma.session.findFirst({
+    where: {
+      tokenHash: hashToken(token),
+      expiresAt: { gt: new Date() },
+    },
+    select: {
+      user: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  })
+
+  return session?.user || null
+}
