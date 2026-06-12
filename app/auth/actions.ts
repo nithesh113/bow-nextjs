@@ -41,7 +41,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
   })
 
   await createSession(user.id)
-  redirect('/')
+  redirect('/dashboard')
 }
 
 export async function loginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -60,7 +60,7 @@ export async function loginAction(_: AuthActionState, formData: FormData): Promi
   if (!valid) return { error: 'Invalid email or password.' }
 
   await createSession(user.id)
-  redirect('/')
+  redirect('/dashboard')
 }
 
 export async function forgotPasswordAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -112,10 +112,10 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
   ])
   await createSession(resetToken.userId)
 
-  redirect('/')
+  redirect('/dashboard')
 }
 
 export async function logoutAction() {
   await destroySession()
-  redirect('/login')
+  redirect('/')
 }

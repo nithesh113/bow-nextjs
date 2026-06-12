@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { InputHTMLAttributes } from 'react'
+import { Eye, EyeOff } from 'lucide-react'
 
 type PasswordFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, 'type'> & {
   label: string
@@ -19,28 +20,29 @@ export default function PasswordField({ label, id, style, ...props }: PasswordFi
           id={inputId}
           type={visible ? 'text' : 'password'}
           {...props}
-          style={{ paddingRight: 76, ...style }}
+          style={{ paddingRight: 46, ...style }}
         />
         <button
           type="button"
           onClick={() => setVisible((value) => !value)}
           aria-label={visible ? 'Hide password' : 'Show password'}
+          title={visible ? 'Hide password' : 'Show password'}
           style={{
             position: 'absolute',
             right: 6,
             top: '50%',
             transform: 'translateY(-50%)',
-            minWidth: 58,
-            height: 30,
+            width: 32,
+            height: 32,
             border: '1px solid var(--border)',
             borderRadius: 6,
             background: 'rgba(255,255,255,0.08)',
             color: 'var(--text-secondary)',
-            fontSize: 11,
-            fontWeight: 800,
+            display: 'grid',
+            placeItems: 'center',
           }}
         >
-          {visible ? 'Hide' : 'Show'}
+          {visible ? <EyeOff size={16} aria-hidden="true" /> : <Eye size={16} aria-hidden="true" />}
         </button>
       </div>
     </label>
