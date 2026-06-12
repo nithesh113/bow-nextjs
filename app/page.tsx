@@ -1,5 +1,5 @@
 import React from 'react';
-import './page.css'; 
+import '@/styles/page.css'; 
 import Link from 'next/link';
 
 // --- DATA ARRAYS ---

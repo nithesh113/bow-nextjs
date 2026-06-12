@@ -3,7 +3,9 @@
 import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
 import { createSession, createToken, destroySession, hashToken } from '@/lib/auth/session'
-import { sendPasswordResetEmail } from '@/lib/auth/email'
+import { sendPasswordResetEmail } from '@/lib/auth/forget-passwordtemp'
+import { sendWelcomeEmail } from '@/lib/auth/welcome-temp'
+import { sendPasswordChangedEmail } from '@/lib/auth/reset-secuess'
 import { prisma } from '@/lib/auth/prisma'
 
 export type AuthActionState = {
@@ -41,6 +43,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
   })
 
   await createSession(user.id)
+  await sendWelcomeEmail(email, name)
   redirect('/dashboard')
 }
 
@@ -100,7 +103,16 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
       usedAt: null,
       expiresAt: { gt: new Date() },
     },
-    select: { id: true, userId: true },
+    select: { 
+      id: true, 
+      userId: true,
+      user: {
+      select: {
+        email: true,
+        name: true,
+        }
+       },
+    }, 
   })
   if (!resetToken) return { error: 'This reset link is invalid or expired.' }
 
@@ -110,6 +122,8 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
     prisma.passwordResetToken.update({ where: { id: resetToken.id }, data: { usedAt: new Date() } }),
     prisma.session.deleteMany({ where: { userId: resetToken.userId } }),
   ])
+
+  await sendPasswordChangedEmail(resetToken.user.email, resetToken.user.name)
   await createSession(resetToken.userId)
 
   redirect('/dashboard')
