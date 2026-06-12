@@ -72,6 +72,9 @@
   font-weight: 600;
   cursor: pointer;
   transition: opacity 0.2s;
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
 }
 .btn-secondary {
   background-color: transparent;
@@ -83,6 +86,9 @@
   font-weight: 600;
   cursor: pointer;
   transition: background-color 0.2s;
+  display: inline-block;
+  text-align: center;
+  text-decoration: none;
 }
 .btn-large {
   padding: 16px 32px;

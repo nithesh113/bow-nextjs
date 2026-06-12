@@ -1,5 +1,6 @@
 import React from 'react';
-import './page.css'; // Make sure to create this file in the same directory
+import './page.css'; 
+import Link from 'next/link';
 
 // --- DATA ARRAYS ---
 const statistics = [
@@ -64,8 +65,12 @@ export default function LandingPage() {
             <p className="subtitle">Budget + Shift + Earnings Tracker</p>
           </div>
           <div className="nav-group">
-            <button className="btn-secondary">Login</button>
-            <button className="btn-primary">Register</button>
+            <Link href="/login" className="btn-secondary" style={{ textDecoration: 'none', textAlign: 'center' }}>
+              Login
+            </Link>
+            <Link href="/register" className="btn-primary" style={{ textDecoration: 'none', textAlign: 'center' }}>
+              Register
+            </Link>
           </div>
         </div>
       </header>
@@ -290,8 +295,12 @@ export default function LandingPage() {
           <div className="container">
             <h2 className="headline cta-headline">Take control of your work and finances.</h2>
             <div className="button-group center-group">
-              <button className="btn-primary btn-xl">Get Started Today</button>
-              <button className="btn-secondary btn-xl">Login to Account</button>
+              <Link href="/register" className="btn-primary btn-xl" style={{ textDecoration: 'none', textAlign: 'center' }}>
+                Get Started Today
+              </Link>
+              <Link href="/login" className="btn-secondary btn-xl" style={{ textDecoration: 'none', textAlign: 'center' }}>
+                Login to Account
+              </Link>
             </div>
           </div>
         </section>
