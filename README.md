@@ -1,26 +1,29 @@
-# BOW — Japan Work Hours & Budget Tracker (Next.js)
+# BOW — Japan Work Hours & Budget Tracker
 
-**Version:** 6.4 | **Framework:** Next.js 14 + TypeScript + Zustand + PostgreSQL (Neon)
+**Version:** 6.4 | **Stack:** Next.js 14 · TypeScript · Zustand · PostgreSQL (Neon) · Prisma · Resend · Sonner
+
+> Budget + Overtime + Work tracker for Japan international students on a student visa. Tracks your 28h/week work limit, night-pay premiums, budget allocations, and savings goals — all from a mobile-first dark-mode app.
 
 ---
 
 ## Quick Start
 
 ```bash
-# Install dependencies
+# 1. Install dependencies
 npm install
 
-# Set up environment variables
+# 2. Configure environment variables
 cp .env.example .env
 # Fill in DATABASE_URL, RESEND_API_KEY, APP_URL, EMAIL_FROM
 
-# Push database schema
+# 3. Push database schema to your database
 npm run prisma:push
 
-# Generate Prisma client
+# 4. Generate Prisma client types
+#    ⚠️ Windows: stop the dev server first before running this
 npm run prisma:generate
 
-# Run development server
+# 5. Start development server
 npm run dev
 ```
 
@@ -28,90 +31,111 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## Project Structure
+## Features
 
-```
-bow-nextjs/
-├── app/                    # Next.js App Router
-│   ├── layout.tsx          # Root layout (fonts, metadata, Toaster)
-│   ├── page.tsx            # Main entry
-│   ├── globals.css         # CSS variables, base styles
-│   ├── auth/               # Server actions (login, register, reset, verify)
-│   ├── actions/            # Account server actions
-│   ├── dashboard/          # Protected dashboard page
-│   ├── login/              # Login page
-│   ├── register/           # Register page
-│   ├── verify/             # Email verification page (with resend form)
-│   ├── verify-email/       # Token verification API route
-│   ├── forgot-password/    # Forgot password page
-│   └── reset-password/     # Reset password page
-├── components/
-│   ├── layout/             # AppShell, Topbar, TopTabs, BottomNav
-│   ├── auth/               # LoginForm, RegisterForm, ResendVerificationForm
-│   ├── account/            # AccountView (editable profile)
-│   ├── calendar/           # CalendarView, CalendarCell, VisaBar
-│   ├── modals/             # DayModal, JobManagerModal, etc.
-│   ├── templates/          # TemplatesView, TemplateCard, ApplyModal
-│   ├── budget/             # BudgetView, CategoryCard, GoalCard
-│   ├── summary/            # SummaryView, cumulative stats
-│   ├── settings/           # SettingsView
-│   ├── transactions/       # TransactionsView
-│   ├── fab/                # FABButton, FABMenu, 4 entry modals
-│   └── ui/                 # Modal, ProgressBar, ToggleSwitch, etc.
-├── store/                  # Zustand stores (jobs, shifts, templates, budget, app)
-├── lib/
-│   ├── auth/               # session, prisma, email templates (verify, welcome, reset)
-│   └── ...                 # dateUtils, timeUtils, nightPayEngine
-├── prisma/
-│   └── schema.prisma       # Database schema
-├── services/               # Storage, export, import
-├── hooks/                  # useLocalStorage, useSwipeGesture, useModal
-└── types/                  # TypeScript interfaces
-```
+### 🔐 Authentication & Accounts
+- Secure registration with **email verification** (via Resend)
+- Login with email + password (bcrypt hashed, session-based)
+- **Forgot password** — email reset link with 1-hour expiry
+- **Resend verification email** — from the `/verify` page or Account page
+- Verification status banner & badge in the Account page
+- Persistent sessions via HTTP-only cookies (30-day expiry)
+
+### 👤 Account Management
+- Editable profile: **name**, **email**, **currency**, **location**
+- Per-user **currency selector** (JPY, USD, EUR, GBP, INR, AUD, CAD)
+- Per-user **location selector** (Japan, US, UK, India, Australia, etc.)
+- Sonner toast notifications for all save/error events
+- Email verification badge: ✅ verified with date, or ⚠️ unverified with resend button
+
+### 📅 Work Calendar
+- Monthly calendar with per-day shift tracking
+- Japan student visa **28h/week compliance tracker** with colour-coded VisaBar
+- **Scheduled vs Actual** hours comparison per day
+- Support for multiple jobs per day
+
+### 💰 Budget & Finance
+- Monthly budget with **waterfall allocation** across categories
+- **Savings goals** with carry-forward from previous months
+- Budget categories with colour coding and progress tracking
+
+### 🧾 Transactions
+- Log work shifts, expenses, and actual pay
+- View and filter all financial transactions
+
+### 🌙 Night Pay Engine
+- Automatic **night-pay premium** calculation for hours between 22:00–05:00
+- Per-minute pay toggle for granular calculations
+
+### 📋 Templates
+- Create reusable shift templates for recurring work patterns
+- Apply templates directly from the calendar via a bottom-sheet modal
+
+### ⚡ FAB Quick Entry
+- Floating Action Button with 4 fast-entry modes:
+  - Add Expense
+  - Log Shift
+  - Log Actual Time
+  - Apply Template
+
+### 💾 Backup & Restore
+- Full JSON **export** of all local data
+- **Import** from a previous JSON backup
+- All work/budget data stored in `localStorage` (per-device)
+
+### 🎨 UI & Design
+- **Dark theme** with CSS variables design system
+- Mobile-first, PWA-ready (manifest + apple web app meta)
+- Smooth animations (`slideUp`, `fadeIn`)
+- Sonner toast notifications app-wide
+- Bottom navigation bar with swipe gesture support
+- Top navigation tabs for primary views
 
 ---
 
-## Key Features
+## Navigation Structure
 
-- ✅ Japan student visa 28h/week compliance tracker
-- ✅ Night pay calculation (22:00–05:00 premium rate)
-- ✅ Scheduled vs Actual time comparison
-- ✅ Monthly budget with waterfall allocation
-- ✅ Savings goals with carry-forward
-- ✅ Template system for recurring shifts
-- ✅ FAB quick entry (expense, shift, actual time, template)
-- ✅ Full JSON backup / restore
-- ✅ User accounts with PostgreSQL persistence (Neon)
-- ✅ Email verification on registration (via Resend)
-- ✅ Resend verification email with toast notifications
-- ✅ Password reset via email
-- ✅ Editable account profile (name, email, currency, location)
-- ✅ Dark theme, mobile-first
+### Top Navigation Tabs
+| Tab | View |
+|-----|------|
+| 📅 Calendar | Monthly work calendar |
+| 💰 Budget | Budget allocations & goals |
+| 📊 Summary | Cumulative earnings & hours |
+| 📋 Transactions | All transaction history |
+| 👤 Account | Profile, preferences & verification |
+
+### Bottom Navigation
+| Tab | View |
+|-----|------|
+| 🏠 Home | Dashboard |
+| 📋 Templates | Shift templates |
+| ⚡ FAB | Quick entry menu |
+| ⋯ More | Settings (export/import, per-minute pay) |
 
 ---
 
 ## Authentication Flow
 
-| Step | Description |
+| Step | What Happens |
 |------|-------------|
-| Register | Creates account → sends verification email → redirects to `/verify` |
-| Verify Email | User clicks link → token validated → session created → redirected to dashboard |
-| Resend | User requests new link from `/verify` page with sonner toast feedback |
-| Login | Email + password → session → dashboard |
-| Forgot Password | Email link → `/reset-password?token=...` → new password |
-| Dashboard Guard | Unverified users are bounced to `/verify?email=...` |
+| **Register** | Create account → verification email sent → redirect to `/verify` |
+| **Verify Email** | Click link → token validated → session created → dashboard |
+| **Resend** | Request new link from `/verify?email=...` or Account page |
+| **Login** | Email + password → 30-day session cookie → dashboard |
+| **Forgot Password** | Email reset link → `/reset-password?token=...` → new password |
+| **Password Changed** | Confirmation email sent, all old sessions invalidated |
 
 ---
 
 ## Environment Variables
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string (Neon) |
-| `RESEND_API_KEY` | Resend API key for transactional emails |
-| `APP_URL` | App base URL (e.g. `http://localhost:3000`) |
-| `EMAIL_FROM` | Sender address (e.g. `BOW <noreply@yourdomain.com>`) |
-| `AUTH_COOKIE_NAME` | Session cookie name (default: `bow_session`) |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | ✅ | PostgreSQL connection string (e.g. Neon) |
+| `RESEND_API_KEY` | ✅ | API key for transactional emails |
+| `APP_URL` | ✅ | Base URL (e.g. `http://localhost:3000`) |
+| `EMAIL_FROM` | ✅ | Sender address (e.g. `BOW <noreply@yourdomain.com>`) |
+| `AUTH_COOKIE_NAME` | ⚙️ | Session cookie name (default: `bow_session`) |
 
 ---
 
@@ -119,33 +143,90 @@ bow-nextjs/
 
 | Rule | Detail |
 |------|--------|
-| Week limit | 28 hours Mon–Sun |
-| Night pay | 22:00–05:00 premium rate |
-| Date range | Apr 2026 – Sep 2027 (18 months) |
+| Weekly hour limit | 28 hours (Mon–Sun) |
+| Night-pay hours | 22:00–05:00 premium rate |
+| App date range | Apr 2026 – Sep 2027 (18 months) |
 | School fee target | ¥840,000 |
 | Week start | Monday |
 
 ---
 
-## Database (Prisma + Neon PostgreSQL)
+## Database Schema
+
+> **Prisma + Neon PostgreSQL**
 
 ```bash
-# Apply schema changes to database
+# Apply schema changes to the database
 npm run prisma:push
 
-# Regenerate Prisma Client types (stop dev server first on Windows)
+# Regenerate Prisma Client types
+# ⚠️ Windows: stop `npm run dev` first to avoid EPERM file-lock errors
 npm run prisma:generate
 ```
 
-> **Note for Windows users:** Stop `npm run dev` before running `prisma:generate` to avoid file-lock errors.
+| Model | Purpose |
+|-------|---------|
+| `User` | Account: name, email, passwordHash, currency, location, emailVerified |
+| `Session` | Active login sessions (tokenHash, expiresAt) |
+| `VerificationToken` | Email verification tokens — 24h expiry |
+| `PasswordResetToken` | Password reset tokens — 1h expiry, single-use |
 
 ---
 
-## Prisma Models
+## Tech Stack
 
-| Model | Purpose |
-|-------|---------|
-| `User` | Account with name, email, passwordHash, currency, location, emailVerified |
-| `Session` | Auth sessions linked to user |
-| `VerificationToken` | Email verification tokens (24h expiry) |
-| `PasswordResetToken` | Password reset tokens (1h expiry) |
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 14 (App Router) |
+| Language | TypeScript |
+| Database | PostgreSQL via Neon (serverless) |
+| ORM | Prisma 6 |
+| State Management | Zustand |
+| Email | Resend |
+| Notifications | Sonner |
+| Auth | Custom session-based (bcrypt + SHA-256 tokens) |
+| Fonts | Syne (display) · JetBrains Mono (mono) |
+| Styling | Vanilla CSS with CSS variables |
+
+---
+
+## Project Structure
+
+```
+bow-nextjs/
+├── app/
+│   ├── layout.tsx              # Root layout — fonts, metadata, global Toaster
+│   ├── globals.css             # CSS design tokens & base styles
+│   ├── auth/actions.ts         # Server actions: register, login, forgot/reset password, verify
+│   ├── actions/account.ts      # Server actions: updateAccount, resendVerificationEmail
+│   ├── dashboard/page.tsx      # Protected dashboard (requires login)
+│   ├── login/                  # Login page
+│   ├── register/               # Registration page
+│   ├── verify/                 # "Check your email" page with resend form
+│   ├── verify-email/route.ts   # GET handler for email token validation
+│   ├── forgot-password/        # Forgot password page
+│   └── reset-password/         # Reset password page
+├── components/
+│   ├── layout/                 # AppShell, Topbar, TopTabs, BottomNav
+│   ├── auth/                   # LoginForm, RegisterForm, AuthShell, ResendVerificationForm
+│   ├── account/                # AccountView — redesigned profile & verification UI
+│   ├── calendar/               # CalendarView, CalendarCell, VisaBar
+│   ├── budget/                 # BudgetView, CategoryCard, GoalCard
+│   ├── summary/                # SummaryView, cumulative earnings stats
+│   ├── transactions/           # TransactionsView
+│   ├── templates/              # TemplatesView, TemplateCard, ApplyModal
+│   ├── settings/               # SettingsView (export/import, toggles)
+│   ├── modals/                 # DayModal, JobManagerModal, and other modals
+│   ├── fab/                    # FABButton, FABMenu, 4 quick-entry modals
+│   └── ui/                     # Modal, ProgressBar, ToggleSwitch, Field, Button, etc.
+├── store/                      # Zustand: jobs, shifts, templates, budget, app state
+├── lib/
+│   ├── auth/                   # session.ts, prisma.ts, email templates
+│   ├── dateUtils.ts
+│   ├── timeUtils.ts
+│   └── nightPayEngine.ts
+├── prisma/schema.prisma        # Prisma schema
+├── services/                   # localStorage storage, JSON export/import
+├── hooks/                      # useLocalStorage, useSwipeGesture, useModal
+└── types/index.ts              # Shared TypeScript interfaces
+```
