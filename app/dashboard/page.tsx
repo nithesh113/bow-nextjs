@@ -8,5 +8,9 @@ export default async function DashboardPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
-  return <AppShell userName={user.name} />
+  if (!user.emailVerified) {
+    redirect(`/verify?email=${encodeURIComponent(user.email)}`)
+  }
+
+  return <AppShell user={user} />
 }

@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next'
 import { Syne, JetBrains_Mono } from 'next/font/google'
+import { Toaster } from 'sonner'
 import './globals.css'
 
 const syne = Syne({
@@ -31,7 +32,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" className={`${syne.variable} ${mono.variable}`}>
-      <body>{children}</body>
+      <body>
+        {children}
+        <Toaster richColors position="top-center" />
+      </body>
     </html>
   )
 }

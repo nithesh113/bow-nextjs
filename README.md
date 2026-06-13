@@ -1,6 +1,6 @@
 # BOW — Japan Work Hours & Budget Tracker (Next.js)
 
-**Version:** 6.3 | **Framework:** Next.js 14 + TypeScript + Zustand
+**Version:** 6.4 | **Framework:** Next.js 14 + TypeScript + Zustand + PostgreSQL (Neon)
 
 ---
 
@@ -10,11 +10,18 @@
 # Install dependencies
 npm install
 
+# Set up environment variables
+cp .env.example .env
+# Fill in DATABASE_URL, RESEND_API_KEY, APP_URL, EMAIL_FROM
+
+# Push database schema
+npm run prisma:push
+
+# Generate Prisma client
+npm run prisma:generate
+
 # Run development server
 npm run dev
-
-# Build for production (static export for GitHub Pages)
-npm run build
 ```
 
 Open [http://localhost:3000](http://localhost:3000)
@@ -26,11 +33,22 @@ Open [http://localhost:3000](http://localhost:3000)
 ```
 bow-nextjs/
 ├── app/                    # Next.js App Router
-│   ├── layout.tsx          # Root layout (fonts, metadata)
-│   ├── page.tsx            # Main entry (CSR only)
-│   └── globals.css         # CSS variables, base styles
+│   ├── layout.tsx          # Root layout (fonts, metadata, Toaster)
+│   ├── page.tsx            # Main entry
+│   ├── globals.css         # CSS variables, base styles
+│   ├── auth/               # Server actions (login, register, reset, verify)
+│   ├── actions/            # Account server actions
+│   ├── dashboard/          # Protected dashboard page
+│   ├── login/              # Login page
+│   ├── register/           # Register page
+│   ├── verify/             # Email verification page (with resend form)
+│   ├── verify-email/       # Token verification API route
+│   ├── forgot-password/    # Forgot password page
+│   └── reset-password/     # Reset password page
 ├── components/
 │   ├── layout/             # AppShell, Topbar, TopTabs, BottomNav
+│   ├── auth/               # LoginForm, RegisterForm, ResendVerificationForm
+│   ├── account/            # AccountView (editable profile)
 │   ├── calendar/           # CalendarView, CalendarCell, VisaBar
 │   ├── modals/             # DayModal, JobManagerModal, etc.
 │   ├── templates/          # TemplatesView, TemplateCard, ApplyModal
@@ -41,11 +59,14 @@ bow-nextjs/
 │   ├── fab/                # FABButton, FABMenu, 4 entry modals
 │   └── ui/                 # Modal, ProgressBar, ToggleSwitch, etc.
 ├── store/                  # Zustand stores (jobs, shifts, templates, budget, app)
-├── lib/                    # Pure utilities (dateUtils, timeUtils, nightPayEngine)
+├── lib/
+│   ├── auth/               # session, prisma, email templates (verify, welcome, reset)
+│   └── ...                 # dateUtils, timeUtils, nightPayEngine
+├── prisma/
+│   └── schema.prisma       # Database schema
 ├── services/               # Storage, export, import
 ├── hooks/                  # useLocalStorage, useSwipeGesture, useModal
-├── types/                  # TypeScript interfaces
-└── public/                 # manifest.json
+└── types/                  # TypeScript interfaces
 ```
 
 ---
@@ -60,8 +81,37 @@ bow-nextjs/
 - ✅ Template system for recurring shifts
 - ✅ FAB quick entry (expense, shift, actual time, template)
 - ✅ Full JSON backup / restore
-- ✅ 100% offline — no server, no accounts
+- ✅ User accounts with PostgreSQL persistence (Neon)
+- ✅ Email verification on registration (via Resend)
+- ✅ Resend verification email with toast notifications
+- ✅ Password reset via email
+- ✅ Editable account profile (name, email, currency, location)
 - ✅ Dark theme, mobile-first
+
+---
+
+## Authentication Flow
+
+| Step | Description |
+|------|-------------|
+| Register | Creates account → sends verification email → redirects to `/verify` |
+| Verify Email | User clicks link → token validated → session created → redirected to dashboard |
+| Resend | User requests new link from `/verify` page with sonner toast feedback |
+| Login | Email + password → session → dashboard |
+| Forgot Password | Email link → `/reset-password?token=...` → new password |
+| Dashboard Guard | Unverified users are bounced to `/verify?email=...` |
+
+---
+
+## Environment Variables
+
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string (Neon) |
+| `RESEND_API_KEY` | Resend API key for transactional emails |
+| `APP_URL` | App base URL (e.g. `http://localhost:3000`) |
+| `EMAIL_FROM` | Sender address (e.g. `BOW <noreply@yourdomain.com>`) |
+| `AUTH_COOKIE_NAME` | Session cookie name (default: `bow_session`) |
 
 ---
 
@@ -77,25 +127,25 @@ bow-nextjs/
 
 ---
 
-## Deploy to GitHub Pages
+## Database (Prisma + Neon PostgreSQL)
 
 ```bash
-npm run build
-# Uploads the `out/` folder to GitHub Pages
+# Apply schema changes to database
+npm run prisma:push
+
+# Regenerate Prisma Client types (stop dev server first on Windows)
+npm run prisma:generate
 ```
 
-Set `output: 'export'` is already configured in `next.config.ts`.
+> **Note for Windows users:** Stop `npm run dev` before running `prisma:generate` to avoid file-lock errors.
 
 ---
 
-## localStorage Keys
+## Prisma Models
 
-| Key | Purpose |
-|-----|---------|
-| `wh_jobs3` | Jobs array |
-| `wh_shifts` | Shifts per date |
-| `wh_templates` | Templates array |
-| `wh_perMinute` | Per-minute pay toggle |
-| `wh_budgets` | Monthly budgets |
-| `wh2_{date}_{jobId}` | Hours cache per day |
-| `wh2n_{date}_{jobId}` | Night hours cache |
+| Model | Purpose |
+|-------|---------|
+| `User` | Account with name, email, passwordHash, currency, location, emailVerified |
+| `Session` | Auth sessions linked to user |
+| `VerificationToken` | Email verification tokens (24h expiry) |
+| `PasswordResetToken` | Password reset tokens (1h expiry) |

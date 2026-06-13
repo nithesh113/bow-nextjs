@@ -9,6 +9,7 @@ import TemplatesView from '@/components/templates/TemplatesView'
 import BudgetView from '@/components/budget/BudgetView'
 import SummaryView from '@/components/summary/SummaryView'
 import SettingsView from '@/components/settings/SettingsView'
+import AccountView from '@/components/account/AccountView'
 import TransactionsView from '@/components/transactions/TransactionsView'
 import DayModal from '@/components/modals/DayModal'
 import JobManagerModal from '@/components/modals/JobManagerModal'
@@ -21,15 +22,16 @@ import ExpenseEntryModal from '@/components/fab/modals/ExpenseEntryModal'
 import ShiftEntryModal from '@/components/fab/modals/ShiftEntryModal'
 import ActualTimeModal from '@/components/fab/modals/ActualTimeModal'
 import TemplateEntryModal from '@/components/fab/modals/TemplateEntryModal'
+import { AuthUser } from '@/lib/auth/session'
 
-export default function AppShell({ userName }: { userName: string }) {
+export default function AppShell({ user }: { user: AuthUser }) {
   const { activeTab, activeBottomTab, openModal, fabExpanded } = useAppStore()
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* ── Header ─────────────────────────── */}
-      <Topbar userName={userName} />
+      <Topbar userName={user.name} />
       <TopTabs />
 
       {/* ── Main Tab Content ───────────────── */}
@@ -39,7 +41,7 @@ export default function AppShell({ userName }: { userName: string }) {
           {activeTab === 'templates' && <TemplatesView />}
           {activeTab === 'budget'    && <BudgetView />}
           {activeTab === 'summary'   && <SummaryView />}
-          {activeTab === 'settings'  && <SettingsView />}
+          {activeTab === 'account'   && <AccountView user={user} />}
         </>
       )}
 
@@ -55,11 +57,7 @@ export default function AppShell({ userName }: { userName: string }) {
           🏦 Accounts coming soon…
         </div>
       )}
-      {activeBottomTab === 'more' && (
-        <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)' }}>
-          ⋯ More options coming soon…
-        </div>
-      )}
+      {activeBottomTab === 'more' && <SettingsView />}
 
       {/* ── Bottom Navigation ──────────────── */}
       <BottomNav />

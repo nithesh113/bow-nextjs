@@ -1,7 +1,9 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useFormState, useFormStatus } from 'react-dom'
 import { registerAction, type AuthActionState } from '@/app/auth/actions'
+import { toast } from 'sonner'
 import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
 import PasswordField from '@/components/ui/PasswordField'
@@ -16,6 +18,12 @@ function SubmitButton() {
 
 export default function RegisterForm() {
   const [state, formAction] = useFormState(registerAction, initialState)
+
+  useEffect(() => {
+    if (state.error) {
+      toast.error(state.error)
+    }
+  }, [state.error])
 
   return (
     <form action={formAction} style={{ display: 'grid', gap: 14 }}>

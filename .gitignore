@@ -2,6 +2,8 @@
 node_modules/
 .pnp
 .pnp.js
+BOW_NEXTJS_MIGRATION.md
+Bow-Documentation.md
 
 # Next.js
 .next/

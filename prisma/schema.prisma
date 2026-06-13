@@ -12,12 +12,25 @@ model User {
   name                String
   email               String               @unique
   passwordHash        String               @map("password_hash")
+  currency            String?              @default("JPY")
+  location            String?              @default("Japan")
+  emailVerified       DateTime?            @map("email_verified") @db.Timestamptz(6)
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
 
   @@map("users")
+}
+
+model VerificationToken {
+  id         String   @id @default(uuid()) @db.Uuid
+  identifier String
+  token      String   @unique
+  expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
 }
 
 model Session {

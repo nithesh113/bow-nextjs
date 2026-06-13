@@ -9,6 +9,9 @@ export type AuthUser = {
   id: string
   name: string
   email: string
+  currency: string | null
+  location: string | null
+  emailVerified: Date | null
 }
 
 export function hashToken(token: string) {
@@ -66,6 +69,9 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
           id: true,
           name: true,
           email: true,
+          currency: true,
+          location: true,
+          emailVerified: true,
         },
       },
     },

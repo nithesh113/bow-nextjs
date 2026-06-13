@@ -5,6 +5,7 @@ import { redirect } from 'next/navigation'
 import { createSession, createToken, destroySession, hashToken } from '@/lib/auth/session'
 import { sendPasswordResetEmail } from '@/lib/auth/forget-passwordtemp'
 import { sendWelcomeEmail } from '@/lib/auth/welcome-temp'
+import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
 import { sendPasswordChangedEmail } from '@/lib/auth/reset-secuess'
 import { prisma } from '@/lib/auth/prisma'
 
@@ -42,9 +43,28 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
     select: { id: true },
   })
 
-  await createSession(user.id)
-  await sendWelcomeEmail(email, name)
-  redirect('/dashboard')
+  const token = createToken()
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+  
+  await prisma.verificationToken.create({
+    data: {
+      identifier: email,
+      token: hashToken(token),
+      expiresAt,
+    },
+  })
+
+  const appUrl = process.env.APP_URL || 'http://localhost:3000'
+  const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+
+  if (!emailRes.success) {
+    // Delete the user and token so they can try again
+    await prisma.verificationToken.delete({ where: { token: hashToken(token) } })
+    await prisma.user.delete({ where: { id: user.id } })
+    return { error: `Failed to send verification email: ${emailRes.error}` }
+  }
+
+  redirect(`/verify?email=${encodeURIComponent(email)}`)
 }
 
 export async function loginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
@@ -132,4 +152,46 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
 export async function logoutAction() {
   await destroySession()
   redirect('/')
+}
+
+export async function resendVerificationAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
+  const email = normalizeEmail(readString(formData, 'email'))
+  if (!email) return { error: 'Please enter your email address.' }
+
+  const user = await prisma.user.findUnique({
+    where: { email },
+    select: { id: true, emailVerified: true },
+  })
+
+  if (!user) {
+    // Return generic message to avoid email enumeration
+    return { success: 'If an unverified account exists for this email, a new link has been sent.' }
+  }
+
+  if (user.emailVerified) {
+    return { error: 'This email address is already verified. Please log in.' }
+  }
+
+  // Delete any existing verification tokens for this email
+  await prisma.verificationToken.deleteMany({ where: { identifier: email } })
+
+  const token = createToken()
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
+
+  await prisma.verificationToken.create({
+    data: {
+      identifier: email,
+      token: hashToken(token),
+      expiresAt,
+    },
+  })
+
+  const appUrl = process.env.APP_URL || 'http://localhost:3000'
+  const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+
+  if (!emailRes.success) {
+    return { error: `Failed to send email: ${emailRes.error}` }
+  }
+
+  return { success: 'A new verification link has been sent to your email!' }
 }
