@@ -64,7 +64,7 @@ export default function SettingsView() {
       <section style={sectionStyle}>
         <div style={sectionTitle}>About BOW</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
-          <div><strong style={{ color: 'var(--text)' }}>Version:</strong> 6.4 (Next.js)</div>
+          <div><strong style={{ color: 'var(--text)' }}>Version:</strong> 7.0 (Next.js)</div>
           <div><strong style={{ color: 'var(--text)' }}>Developed by:</strong> Nitheshwar &amp; Arockia</div>
           <div><strong style={{ color: 'var(--text)' }}>Purpose:</strong> Japan student visa compliance &amp; budget tracking</div>
           <div><strong style={{ color: 'var(--text)' }}>Data:</strong> Cloud database (Neon PostgreSQL) + local work data</div>
