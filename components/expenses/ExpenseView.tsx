@@ -6,10 +6,10 @@ import ExpenseList from './ExpenseList'
 import EditExpenseModal from './EditExpenseModal'
 import DeleteConfirmModal from './DeleteConfirmModal'
 import CategoryPicker from './CategoryPicker'
-import type { CategoryData, ExpenseData } from '@/app/actions/expenses'
-import { getCategories, getExpenses, seedDefaultCategories } from '@/app/actions/expenses'
+import type { ExpenseData } from '@/app/actions/expenses'
 import { MONTH_NAMES } from '@/lib/constants'
 import { formatYen } from '@/lib/timeUtils'
+import { useExpensesStore } from '@/store/useExpensesStore'
 
 function monthKey(year: number, month: number): string {
   return `${year}-${String(month + 1).padStart(2, '0')}`
@@ -20,49 +20,40 @@ export default function ExpenseView() {
   const [curY, setCurY] = useState(now.getFullYear())
   const [curM, setCurM] = useState(now.getMonth())
 
-  const [categories, setCategories] = useState<CategoryData[]>([])
-  const [expenses, setExpenses] = useState<ExpenseData[]>([])
-  const [loadingExps, setLoadingExps] = useState(true)
+  const mk = monthKey(curY, curM)
+
+  // Pull from cache. Cache is invalidated by AppShell listeners; loadMonth
+  // does the actual fetch (and is a no-op when the month is already cached).
+  const expensesRaw = useExpensesStore(s => s.expensesByMonth[mk])
+  const loaded = useExpensesStore(s => s.loadedMonths.has(mk))
+  const categories = useExpensesStore(s => s.categories)
+  const loadMonth = useExpensesStore(s => s.loadMonth)
+  const loadCategories = useExpensesStore(s => s.loadCategories)
+
+  useEffect(() => {
+    void loadMonth(mk)
+  }, [mk, loadMonth])
+
   const [editExpense, setEditExpense] = useState<ExpenseData | null>(null)
   const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null)
   const [showCatManager, setShowCatManager] = useState(false)
 
-  const mk = monthKey(curY, curM)
+  // Pre-populate categories on first mount so CategoryPicker has data even if
+  // user hasn't visited BudgetView yet.
+  useEffect(() => { void loadCategories() }, [loadCategories])
+
+  // The cache returns CachedExpense[] (compatible shape with ExpenseData);
+  // cast so child components stay typed against the server action shape.
+  const expenses = (expensesRaw ?? []) as unknown as ExpenseData[]
+  const loadingExps = !loaded
   const totalSpent = expenses.reduce((s, e) => s + e.amount, 0)
 
-  // ── Load categories ─────────────────────────────
-  const loadCategories = useCallback(async () => {
-    try {
-      let cats = await getCategories()
-      if (!cats || cats.length === 0) {
-        cats = await seedDefaultCategories()
-      }
-      setCategories(cats)
-    } catch (err) {
-      console.error('Load categories failed:', err)
-    }
-  }, [])
-
-  // ── Load expenses ───────────────────────────────
-  const loadExpenses = useCallback(async () => {
-    setLoadingExps(true)
-    try {
-      const exps = await getExpenses(mk)
-      setExpenses(exps)
-    } catch (err) {
-      console.error('Load expenses failed:', err)
-    } finally {
-      setLoadingExps(false)
-    }
-  }, [mk])
-
-  useEffect(() => { loadCategories() }, [loadCategories])
-  useEffect(() => { loadExpenses() }, [loadExpenses])
-
-  const handleSaved = () => {
-    loadExpenses()
-    loadCategories()
-  }
+  const handleSaved = useCallback(() => {
+    // Bust the visible month so the next render pulls from DB.
+    useExpensesStore.getState().invalidateMonth(mk)
+    void loadMonth(mk)
+    void loadCategories()
+  }, [mk, loadMonth, loadCategories])
 
   const handleEdit = (exp: ExpenseData) => {
     setEditExpense(exp)
@@ -160,7 +151,7 @@ export default function ExpenseView() {
           selectedCategoryId={null}
           selectedSubcategoryId={null}
           onSelect={() => {}}
-          onEdit={loadCategories}
+          onEdit={() => { void loadCategories() }}
           onClose={() => setShowCatManager(false)}
         />
       )}
@@ -170,8 +161,8 @@ export default function ExpenseView() {
 
 const navBtn: React.CSSProperties = {
   background: 'rgba(255,255,255,0.08)', border: '1px solid var(--border)',
-  color: 'var(--text)', width: 32, height: 32, borderRadius: 6,
-  fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  color: 'var(--text)', width: 32, height: 32, borderRadius: 6, fontSize: 16, cursor: 'pointer',
+  display: 'flex', alignItems: 'center', justifyContent: 'center',
 }
 
 const statCard: React.CSSProperties = {

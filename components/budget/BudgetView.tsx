@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { getExpenses, getCategories, seedDefaultCategories, saveCategoryBudgetByName } from '@/app/actions/expenses'
+import { useEffect, useMemo } from 'react'
+import { saveCategoryBudgetByName } from '@/app/actions/expenses'
 import { getDayHours, getNightHours } from '@/services/storage'
 import { dateKey } from '@/lib/dateUtils'
 import { useBudgetStore } from '@/store/useBudgetStore'
+import { useExpensesStore } from '@/store/useExpensesStore'
 import { useJobsStore } from '@/store/useJobsStore'
 import { MONTH_NAMES, DEFAULT_CATEGORIES } from '@/lib/constants'
 import { parseMonthKey } from '@/lib/dateUtils'
@@ -17,104 +18,105 @@ export default function BudgetView() {
   const { currentMonth, budgets, ensureMonth, prevMonth, nextMonth, recalculate,
           addGoal, setBudgets } = useBudgetStore()
   const { jobs } = useJobsStore()
-  const [refreshTick, setRefreshTick] = useState(0)
 
   // ═══ All hooks before any return ═══
   useEffect(() => { ensureMonth(currentMonth) }, [currentMonth, ensureMonth])
 
-  // ── Load from DB whenever the month changes or an expense entry was made elsewhere ──
+  // Pull expenses + categories from the cache. The cache is invalidated by
+  // AppShell's listeners (focus / visibilitychange / bow:expense-changed),
+  // so this useEffect simply re-fills the cache after a bust and on month
+  // change. Within a tab session, repeated visits are instant.
+  const storedExpenses = useExpensesStore(s => s.expensesByMonth[currentMonth])
+  const loadedMonths = useExpensesStore(s => s.loadedMonths)
+  const loadExpenses = useExpensesStore(s => s.loadMonth)
   useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      try {
-        const [dbExps, dbCats] = await Promise.all([
-          getExpenses(currentMonth),
-          getCategories(),
-        ])
-        if (cancelled) return
+    void loadExpenses(currentMonth)
+  }, [currentMonth, loadExpenses, loadedMonths])
 
-        // Build name→DB-category lookup; track parent budgets for children
-        const dbByName = new Map<string, { id: string; name: string; icon: string; budget: number }>()
-        const parentBudgets = new Map<string, number>()
-        const flatDbCats: { id: string; name: string; icon: string; budget: number; parentName?: string }[] = []
+  const mergedData = useMemo(() => {
+    const dbCats = useExpensesStore.getState().categories
+    const dbExps = storedExpenses ?? []
+    const existingMonth = budgets[currentMonth] || {}
 
-        ;(dbCats || []).forEach(c => {
-          const catBudget = c.budget ?? 20000
-          flatDbCats.push({ id: c.id, name: c.name, icon: c.icon, budget: catBudget })
-          dbByName.set(c.name.toLowerCase(), { id: c.id, name: c.name, icon: c.icon, budget: catBudget })
-          parentBudgets.set(c.name.toLowerCase(), catBudget)
-          for (const sub of c.children || []) {
-            const subBudget = sub.budget ?? parentBudgets.get(c.name.toLowerCase()) ?? 20000
-            flatDbCats.push({ id: sub.id, name: sub.name, icon: sub.icon, budget: subBudget, parentName: c.name })
-            dbByName.set(sub.name.toLowerCase(), { id: sub.id, name: sub.name, icon: sub.icon, budget: subBudget })
-          }
-        })
+    // Build name→DB-category lookup; track parent budgets for children
+    const dbByName = new Map<string, { id: string; name: string; icon: string; budget: number }>()
+    const parentBudgets = new Map<string, number>()
+    const flatDbCats: { id: string; name: string; icon: string; budget: number; parentName?: string }[] = []
 
-        const existingMonth = budgets[currentMonth] || {}
-        const storeCats = existingMonth.categories || []
-
-        const mergedCats = storeCats.map(sc => {
-          const dbMatch = dbByName.get(sc.name.toLowerCase())
-          if (dbMatch && dbMatch.budget > 0 && sc.budget === 0) {
-            return { ...sc, budget: dbMatch.budget }
-          }
-          return sc
-        })
-
-        const storeCatNames = new Set(mergedCats.map(c => c.name.toLowerCase()))
-        let nextId = Math.max(100, ...mergedCats.map(c => c.id), ...DEFAULT_CATEGORIES.map(c => c.id)) + 1
-
-        for (const dbCat of flatDbCats) {
-          if (!storeCatNames.has(dbCat.name.toLowerCase())) {
-            mergedCats.push({
-              id: nextId++,
-              name: dbCat.name,
-              icon: dbCat.icon,
-              budget: dbCat.budget,
-              priority: mergedCats.length + 1,
-            })
-          }
-        }
-
-        const catNameToStoreId = new Map(mergedCats.map(c => [c.name.toLowerCase(), c.id]))
-
-        const mappedExps = dbExps
-          .filter(e => e.categoryName && e.amount > 0)
-          .map(e => ({
-            categoryId: catNameToStoreId.get(e.categoryName.toLowerCase()) ?? 0,
-            amount: e.amount,
-            date: e.date,
-            note: e.note,
-          }))
-          .filter(e => e.categoryId !== 0)
-
-        const existingExps = existingMonth.expenses || []
-        const mergedExps = [...existingExps]
-        for (const e of mappedExps) {
-          if (!mergedExps.some(m => m.date === e.date && m.categoryId === e.categoryId && m.amount === e.amount)) {
-            mergedExps.push(e)
-          }
-        }
-
-        const updated = { ...existingMonth, categories: mergedCats, expenses: mergedExps }
-
-        if (!cancelled) {
-          setBudgets({ ...budgets, [currentMonth]: updated })
-        }
-      } catch (err) {
-        console.warn('[BudgetView] DB load failed, using defaults', err)
+    ;(dbCats || []).forEach(c => {
+      const catBudget = c.budget ?? 20000
+      flatDbCats.push({ id: c.id, name: c.name, icon: c.icon, budget: catBudget })
+      dbByName.set(c.name.toLowerCase(), { id: c.id, name: c.name, icon: c.icon, budget: catBudget })
+      parentBudgets.set(c.name.toLowerCase(), catBudget)
+      for (const sub of c.children || []) {
+        const subBudget = sub.budget ?? parentBudgets.get(c.name.toLowerCase()) ?? 20000
+        flatDbCats.push({ id: sub.id, name: sub.name, icon: sub.icon, budget: subBudget, parentName: c.name })
+        dbByName.set(sub.name.toLowerCase(), { id: sub.id, name: sub.name, icon: sub.icon, budget: subBudget })
       }
-    })()
+    })
 
-    return () => { cancelled = true }
-  }, [currentMonth, refreshTick]) // eslint-disable-line react-hooks/exhaustive-deps
+    const storeCats = existingMonth.categories || []
+    const mergedCats = storeCats.map(sc => {
+      const dbMatch = dbByName.get(sc.name.toLowerCase())
+      if (dbMatch && dbMatch.budget > 0 && sc.budget === 0) {
+        return { ...sc, budget: dbMatch.budget }
+      }
+      return sc
+    })
 
-  // Listen for cross-component expense changes (FAB modal, ExpenseView)
+    const storeCatNames = new Set(mergedCats.map(c => c.name.toLowerCase()))
+    let nextId = Math.max(100, ...mergedCats.map(c => c.id), ...DEFAULT_CATEGORIES.map(c => c.id)) + 1
+
+    for (const dbCat of flatDbCats) {
+      if (!storeCatNames.has(dbCat.name.toLowerCase())) {
+        mergedCats.push({
+          id: nextId++,
+          name: dbCat.name,
+          icon: dbCat.icon,
+          budget: dbCat.budget,
+          priority: mergedCats.length + 1,
+        })
+      }
+    }
+
+    const catNameToStoreId = new Map(mergedCats.map(c => [c.name.toLowerCase(), c.id]))
+
+    const mappedExps = dbExps
+      .filter(e => e.categoryName && e.amount > 0)
+      .map(e => ({
+        categoryId: catNameToStoreId.get(e.categoryName.toLowerCase()) ?? 0,
+        amount: e.amount,
+        date: e.date,
+        note: e.note,
+      }))
+      .filter(e => {
+        if (e.categoryId === 0) console.warn('[BudgetView DB] dropped expense with no matching category:', e)
+        return e.categoryId !== 0
+      })
+
+    return { mergedCats, mappedExps, storeExpenses: existingMonth.expenses || [], existingMonth }
+  }, [storedExpenses, budgets, currentMonth])
+
+  // Persist the merged view back into the budget store when it changes,
+  // so existing derive logic (sort, spent sums, edit/delete) keeps working.
   useEffect(() => {
-    const handler = () => setRefreshTick(t => t + 1)
-    window.addEventListener('bow:expense-changed', handler)
-    return () => window.removeEventListener('bow:expense-changed', handler)
-  }, [])
+    if (storedExpenses === undefined) return  // not loaded yet
+    const { mergedCats, mappedExps, storeExpenses, existingMonth } = mergedData
+    const expKey = (e: { date: string; categoryId: number; amount: number; note: string }) =>
+      `${e.date}|${e.categoryId}|${e.amount}|${e.note || ''}`
+    const newKeys = new Set(mappedExps.map(expKey))
+    const filtered = storeExpenses.filter((e: any) => newKeys.has(expKey(e)))
+    const filteredKeys = new Set(filtered.map(expKey))
+    const finalExps = [
+      ...filtered,
+      ...mappedExps.filter(e => !filteredKeys.has(expKey(e))),
+    ]
+    setBudgets({
+      ...budgets,
+      [currentMonth]: { ...existingMonth, categories: mergedCats, expenses: finalExps },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storedExpenses, currentMonth])
 
   const month = budgets[currentMonth]
 

@@ -18,6 +18,8 @@ export default function DeleteConfirmModal({ expenseId, onDeleted, onClose }: Pr
     setDeleting(true)
     try {
       await deleteExpenseAction(expenseId)
+      // Broadcast so other views (BudgetView, any other listener) refresh
+      window.dispatchEvent(new Event('bow:expense-changed'))
       onDeleted()
       onClose()
     } catch (err) {
