@@ -1,13 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { ChevronDown, Check } from 'lucide-react'
 import Modal, { btnPrimary, btnSuccess } from '@/components/ui/Modal'
 import { useAppStore } from '@/store/useAppStore'
+import { useExpensesStore } from '@/store/useExpensesStore'
 import { todayISO, formatYen } from '@/lib/timeUtils'
 import CategoryPicker from '@/components/expenses/CategoryPicker'
 import type { CategoryData } from '@/app/actions/expenses'
-import { getCategories, seedDefaultCategories, createExpense } from '@/app/actions/expenses'
+import { createExpense } from '@/app/actions/expenses'
 
 function getFlatCats(categories: CategoryData[]): { id: string; name: string; icon: string; parentId?: string }[] {
   const result: { id: string; name: string; icon: string; parentId?: string }[] = []
@@ -23,7 +24,12 @@ function getFlatCats(categories: CategoryData[]): { id: string; name: string; ic
 export default function ExpenseEntryModal() {
   const { closeModal } = useAppStore()
 
-  const [categories, setCategories] = useState<CategoryData[]>([])
+  // Pull categories from cache; trigger a load if cache is empty.
+  const cachedCategories = useExpensesStore(s => s.categories)
+  const loadCategories = useExpensesStore(s => s.loadCategories)
+  useEffect(() => { void loadCategories() }, [loadCategories])
+  const categories = useMemo(() => cachedCategories, [cachedCategories])
+
   const [catId, setCatId] = useState('')
   const [subcatId, setSubcatId] = useState<string | null>(null)
   const [amount, setAmount] = useState('')
@@ -32,16 +38,10 @@ export default function ExpenseEntryModal() {
   const [showPicker, setShowPicker] = useState(false)
   const [saving, setSaving] = useState(false)
 
+  // Auto-select first category when categories arrive and none selected.
   useEffect(() => {
-    (async () => {
-      let cats = await getCategories()
-      if (!cats || cats.length === 0) {
-        cats = await seedDefaultCategories()
-      }
-      setCategories(cats)
-      if (cats.length > 0) setCatId(cats[0].id)
-    })()
-  }, [])
+    if (!catId && categories.length > 0) setCatId(categories[0].id)
+  }, [categories, catId])
 
   const flatCats = getFlatCats(categories)
   const selectedLabel = (() => {
@@ -135,10 +135,7 @@ export default function ExpenseEntryModal() {
             setCatId(catId)
             setSubcatId(subId || null)
           }}
-          onEdit={async () => {
-            const cats = await getCategories()
-            setCategories(cats)
-          }}
+          onEdit={() => { void loadCategories() }}
           onClose={() => setShowPicker(false)}
         />
       )}

@@ -1,6 +1,8 @@
 'use client'
 
+import { useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
+import { startExpensesInvalidationListeners } from '@/store/useExpensesStore'
 import Topbar from './Topbar'
 import TopTabs from './TopTabs'
 import BottomNav from './BottomNav'
@@ -27,6 +29,12 @@ import { AuthUser } from '@/lib/auth/session'
 
 export default function AppShell({ user }: { user: AuthUser }) {
   const { activeTab, activeBottomTab, openModal, fabExpanded } = useAppStore()
+
+  // Single boot: hook up focus/visibility/event listeners that bust
+  // the expense cache so the next view rendering refetches from DB.
+  useEffect(() => {
+    startExpensesInvalidationListeners()
+  }, [])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>

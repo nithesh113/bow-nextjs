@@ -5,6 +5,7 @@ import { ChevronDown, Pencil, X, Check } from 'lucide-react'
 import CategoryPicker from './CategoryPicker'
 import type { CategoryData, ExpenseData } from '@/app/actions/expenses'
 import { createExpense, updateExpense } from '@/app/actions/expenses'
+import { useExpensesStore } from '@/store/useExpensesStore'
 
 interface Props {
   categories: CategoryData[]
@@ -26,7 +27,11 @@ function getFlatCats(categories: CategoryData[]): { id: string; name: string; ic
   return result
 }
 
-export default function ExpenseForm({ categories, monthKey, onSaved, refreshCategories, editExpense, onCancelEdit }: Props) {
+export default function ExpenseForm({ categories: categoriesProp, monthKey, onSaved, refreshCategories, editExpense, onCancelEdit }: Props) {
+  // Read cached categories from the store; fall back to the prop if a parent
+  // passed explicit ones (e.g., when opened inside an isolated modal).
+  const cachedCategories = useExpensesStore(s => s.categories)
+  const categories = (cachedCategories.length > 0 ? cachedCategories : categoriesProp) as CategoryData[]
   const [date, setDate] = useState(editExpense?.date || todayISO())
   const [categoryId, setCategoryId] = useState(editExpense?.categoryId || '')
   const [subcategoryId, setSubcategoryId] = useState<string | null>(editExpense?.subcategoryId || null)
