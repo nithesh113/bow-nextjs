@@ -19,6 +19,8 @@ model User {
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions            Session[]
   passwordResetTokens PasswordResetToken[]
+  expenseCategories   ExpenseCategory[]
+  expenses            Expense[]
 
   @@map("users")
 }
@@ -56,4 +58,47 @@ model PasswordResetToken {
 
   @@index([userId])
   @@map("password_reset_tokens")
+}
+
+model ExpenseCategory {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @db.Uuid
+  name      String
+  icon      String    @default("📌")
+  budget    Int       @default(20000)
+  parentId  String?   @db.Uuid
+  sortOrder Int       @default(0)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user              User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  parent            ExpenseCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id], onDelete: SetNull)
+  children          ExpenseCategory[] @relation("CategoryHierarchy")
+  expenses          Expense[]         @relation("CategoryToExpense")
+  subcategoryOf     Expense[]         @relation("SubcategoryToExpense")
+
+  @@index([userId])
+  @@index([userId, parentId])
+  @@map("expense_categories")
+}
+
+model Expense {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @db.Uuid
+  categoryId     String    @map("category_id") @db.Uuid
+  subcategoryId  String?   @map("subcategory_id") @db.Uuid
+  amount         Float
+  date           DateTime  @db.Date
+  note           String    @default("")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user        User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  category    ExpenseCategory  @relation("CategoryToExpense", fields: [categoryId], references: [id])
+  subcategory ExpenseCategory? @relation("SubcategoryToExpense", fields: [subcategoryId], references: [id])
+
+  @@index([userId, date], map: "expenses_user_date_idx")
+  @@index([userId, categoryId], map: "expenses_user_cat_idx")
+  @@index([userId, date(sort: Desc)], map: "expenses_user_date_desc_idx")
+  @@map("expenses")
 }

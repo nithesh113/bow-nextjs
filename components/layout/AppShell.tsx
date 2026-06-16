@@ -8,6 +8,7 @@ import CalendarView from '@/components/calendar/CalendarView'
 import TemplatesView from '@/components/templates/TemplatesView'
 import BudgetView from '@/components/budget/BudgetView'
 import SummaryView from '@/components/summary/SummaryView'
+import ExpenseView from '@/components/expenses/ExpenseView'
 import SettingsView from '@/components/settings/SettingsView'
 import AccountView from '@/components/account/AccountView'
 import TransactionsView from '@/components/transactions/TransactionsView'
@@ -40,6 +41,7 @@ export default function AppShell({ user }: { user: AuthUser }) {
           {activeTab === 'calendar'  && <CalendarView />}
           {activeTab === 'templates' && <TemplatesView />}
           {activeTab === 'budget'    && <BudgetView />}
+          {activeTab === 'expenses'  && <ExpenseView />}
           {activeTab === 'summary'   && <SummaryView />}
           {activeTab === 'account'   && <AccountView user={user} />}
         </>

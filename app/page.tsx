@@ -164,7 +164,7 @@ export default function LandingPage() {
         <section className="section bg-bg">
           <div className="container">
             <div className="section-header">
-              <h2 className="section-title">Everything you need. Nothing you don't.</h2>
+              <h2 className="section-title">Everything you need. Nothing you don&apos;t.</h2>
             </div>
             <div className="grid-auto-fit">
               {features.map((feat, i) => (

@@ -1,108 +1,149 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { ChevronDown, Check } from 'lucide-react'
 import Modal, { btnPrimary, btnSuccess } from '@/components/ui/Modal'
 import { useAppStore } from '@/store/useAppStore'
-import { useBudgetStore } from '@/store/useBudgetStore'
 import { todayISO, formatYen } from '@/lib/timeUtils'
+import CategoryPicker from '@/components/expenses/CategoryPicker'
+import type { CategoryData } from '@/app/actions/expenses'
+import { getCategories, seedDefaultCategories, createExpense } from '@/app/actions/expenses'
 
-const DEFAULT_CATS = [
-  { id: 1, name: 'Food',        icon: '🍜' },
-  { id: 2, name: 'Transport',   icon: '🚆' },
-  { id: 3, name: 'Shopping',    icon: '🛍'  },
-  { id: 4, name: 'Entertainment',icon: '🎮' },
-  { id: 5, name: 'Utilities',   icon: '💡'  },
-  { id: 6, name: 'Health',      icon: '⚕'  },
-  { id: 7, name: 'Other',       icon: '📌'  },
-]
+function getFlatCats(categories: CategoryData[]): { id: string; name: string; icon: string; parentId?: string }[] {
+  const result: { id: string; name: string; icon: string; parentId?: string }[] = []
+  for (const cat of categories) {
+    result.push({ id: cat.id, name: cat.name, icon: cat.icon })
+    for (const sub of cat.children || []) {
+      result.push({ id: sub.id, name: sub.name, icon: sub.icon, parentId: cat.id })
+    }
+  }
+  return result
+}
 
 export default function ExpenseEntryModal() {
-  const { closeModal, setModal } = useAppStore()
-  const { currentMonth, budgets, addExpense, ensureMonth } = useBudgetStore()
+  const { closeModal } = useAppStore()
 
-  const month = budgets[currentMonth]
-  const cats = (month?.categories?.length ? month.categories : DEFAULT_CATS)
-    .map(c => ({ id: c.id, name: c.name, icon: c.icon || '📌' }))
-
-  const [catId, setCatId]     = useState(cats[0]?.id || 1)
-  const [amount, setAmount]   = useState('')
-  const [date, setDate]       = useState(todayISO())
-  const [note, setNote]       = useState('')
+  const [categories, setCategories] = useState<CategoryData[]>([])
+  const [catId, setCatId] = useState('')
+  const [subcatId, setSubcatId] = useState<string | null>(null)
+  const [amount, setAmount] = useState('')
+  const [date, setDate] = useState(todayISO())
+  const [note, setNote] = useState('')
   const [showPicker, setShowPicker] = useState(false)
+  const [saving, setSaving] = useState(false)
 
-  const selectedCat = cats.find(c => c.id === catId) || cats[0]
+  useEffect(() => {
+    (async () => {
+      let cats = await getCategories()
+      if (!cats || cats.length === 0) {
+        cats = await seedDefaultCategories()
+      }
+      setCategories(cats)
+      if (cats.length > 0) setCatId(cats[0].id)
+    })()
+  }, [])
 
-  const save = () => {
+  const flatCats = getFlatCats(categories)
+  const selectedLabel = (() => {
+    if (!catId) return 'Select category…'
+    const cat = flatCats.find(c => c.id === catId)
+    if (!cat) return 'Select category…'
+    if (subcatId) {
+      const sub = flatCats.find(c => c.id === subcatId)
+      return sub ? `${cat.icon} ${cat.name} › ${sub.icon} ${sub.name}` : `${cat.icon} ${cat.name}`
+    }
+    return `${cat.icon} ${cat.name}`
+  })()
+
+  const save = async (): Promise<boolean> => {
     const num = parseFloat(amount)
-    if (!num || num <= 0) return alert('Enter a valid amount')
-    ensureMonth(currentMonth)
-    addExpense(currentMonth, { categoryId: catId, amount: num, date, note })
-    return true
+    if (!num || num <= 0) { alert('Enter a valid amount'); return false }
+    if (!catId) { alert('Select a category'); return false }
+    setSaving(true)
+    try {
+      await createExpense({ categoryId: catId, subcategoryId: subcatId, amount: num, date, note })
+      return true
+    } catch (err) {
+      console.error('Quick expense save failed:', err)
+      alert('Failed to save')
+      return false
+    } finally {
+      setSaving(false)
+    }
   }
 
-  const handleSave = () => { if (save()) closeModal() }
-  const handleSaveContinue = () => {
-    if (save()) {
+  const handleSave = async () => {
+    if (await save()) {
+      window.dispatchEvent(new Event('bow:expense-changed'))
+      closeModal()
+    }
+  }
+  const handleSaveContinue = async () => {
+    if (await save()) {
+      window.dispatchEvent(new Event('bow:expense-changed'))
       setAmount(''); setNote('')
     }
   }
 
-  if (showPicker) return (
-    <Modal title="💴 Select Category" onClose={() => setShowPicker(false)}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 10 }}>
-        {cats.map(c => (
-          <button key={c.id} onClick={() => { setCatId(c.id); setShowPicker(false) }}
-            style={{
-              display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6,
-              padding: 12,
-              background: c.id === catId ? 'rgba(59,130,246,0.2)' : 'var(--card)',
-              border: `2px solid ${c.id === catId ? 'var(--accent)' : 'var(--border)'}`,
-              borderRadius: 10, cursor: 'pointer', color: 'var(--text)',
-            }}>
-            <span style={{ fontSize: 24 }}>{c.icon}</span>
-            <span style={{ fontSize: 11, fontWeight: 600 }}>{c.name}</span>
-          </button>
-        ))}
-      </div>
-    </Modal>
-  )
-
   return (
-    <Modal title="💴 Add Expense" footer={
-      <>
-        <button onClick={handleSave} style={btnPrimary}>Save</button>
-        <button onClick={handleSaveContinue} style={btnSuccess}>Save + Continue</button>
-      </>
-    }>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <div>
-          <label style={L}>Date</label>
-          <input type="date" value={date} onChange={e => setDate(e.target.value)} />
-        </div>
-        <div>
-          <label style={L}>Category</label>
-          <button onClick={() => setShowPicker(true)} style={{
-            width: '100%', padding: '10px 12px',
-            display: 'flex', alignItems: 'center', gap: 10,
-            background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)',
-            borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left',
-          }}>
-            <span style={{ fontSize: 20 }}>{selectedCat?.icon}</span>
-            <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{selectedCat?.name}</span>
-            <span style={{ color: 'var(--muted)' }}>›</span>
+    <>
+      <Modal title="💴 Add Expense" footer={
+        <>
+          <button onClick={handleSave} disabled={saving} style={btnPrimary}>
+            <Check size={14} /> {saving ? 'Saving…' : 'Save'}
           </button>
+          <button onClick={handleSaveContinue} disabled={saving} style={btnSuccess}>
+            Save + Continue
+          </button>
+        </>
+      }>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div>
+            <label style={L}>Date</label>
+            <input type="date" value={date} onChange={e => setDate(e.target.value)} />
+          </div>
+          <div>
+            <label style={L}>Category</label>
+            <button onClick={() => setShowPicker(true)} style={{
+              width: '100%', padding: '10px 12px',
+              display: 'flex', alignItems: 'center', gap: 10,
+              background: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.3)',
+              borderRadius: 8, color: 'var(--text)', cursor: 'pointer', textAlign: 'left' as const,
+            }}>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 600 }}>{selectedLabel}</span>
+              <ChevronDown size={14} style={{ color: 'var(--muted)' }} />
+            </button>
+          </div>
+          <div>
+            <label style={L}>Amount (¥)</label>
+            <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
+              placeholder="0" inputMode="decimal" autoFocus />
+          </div>
+          <div>
+            <label style={L}>Note (optional)</label>
+            <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Lunch" />
+          </div>
         </div>
-        <div>
-          <label style={L}>Amount (¥)</label>
-          <input type="number" value={amount} onChange={e => setAmount(e.target.value)}
-            placeholder="0" inputMode="decimal" autoFocus />
-        </div>
-        <div>
-          <label style={L}>Note (optional)</label>
-          <input value={note} onChange={e => setNote(e.target.value)} placeholder="e.g. Lunch" />
-        </div>
-      </div>
-    </Modal>
+      </Modal>
+
+      {showPicker && (
+        <CategoryPicker
+          categories={categories}
+          selectedCategoryId={catId}
+          selectedSubcategoryId={subcatId}
+          onSelect={(catId, subId) => {
+            setCatId(catId)
+            setSubcatId(subId || null)
+          }}
+          onEdit={async () => {
+            const cats = await getCategories()
+            setCategories(cats)
+          }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
+    </>
   )
 }
+
 const L: React.CSSProperties = { display: 'block', fontSize: 10, fontWeight: 700, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 4 }

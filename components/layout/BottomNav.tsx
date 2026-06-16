@@ -6,7 +6,6 @@ import type { BottomTab } from '@/types'
 const TABS: { id: BottomTab; label: string; icon: string }[] = [
   { id: 'transactions', label: 'Trans.',   icon: '📄' },
   { id: 'stats',        label: 'Stats',    icon: '📊' },
-  { id: 'accounts',     label: 'Accounts', icon: '🏦' },
   { id: 'more',         label: 'More',     icon: '⋯'  },
 ]
 

@@ -64,10 +64,11 @@ export default function SettingsView() {
       <section style={sectionStyle}>
         <div style={sectionTitle}>About BOW</div>
         <div style={{ fontSize: 12, color: 'var(--muted)', lineHeight: 1.7 }}>
-          <div><strong style={{ color: 'var(--text)' }}>Version:</strong> 6.3 (Next.js)</div>
-          <div><strong style={{ color: 'var(--text)' }}>Built for:</strong> Arockia 🇯🇵</div>
+          <div><strong style={{ color: 'var(--text)' }}>Version:</strong> 6.4 (Next.js)</div>
+          <div><strong style={{ color: 'var(--text)' }}>Developed by:</strong> Nitheshwar &amp; Arockia</div>
           <div><strong style={{ color: 'var(--text)' }}>Purpose:</strong> Japan student visa compliance &amp; budget tracking</div>
-          <div><strong style={{ color: 'var(--text)' }}>Data:</strong> 100% local, no servers, no accounts</div>
+          <div><strong style={{ color: 'var(--text)' }}>Data:</strong> Cloud database (Neon PostgreSQL) + local work data</div>
+          <div><strong style={{ color: 'var(--text)' }}>Features:</strong> Account system, email verification, expense tracking with categories</div>
           <div><strong style={{ color: 'var(--text)' }}>Date range:</strong> Apr 2026 – Sep 2027 (18 months)</div>
           <div><strong style={{ color: 'var(--text)' }}>Weekly limit:</strong> 28 hours (Japan visa rule)</div>
           <div><strong style={{ color: 'var(--text)' }}>School fee target:</strong> ¥840,000</div>

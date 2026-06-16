@@ -4,7 +4,7 @@ import { useEffect } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 
 interface Props {
-  title: string
+  title: React.ReactNode
   onClose?: () => void
   children: React.ReactNode
   footer?: React.ReactNode

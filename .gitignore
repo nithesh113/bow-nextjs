@@ -4,12 +4,15 @@ node_modules/
 .pnp.js
 BOW_NEXTJS_MIGRATION.md
 Bow-Documentation.md
+PROJECT_MAP.md
 
 # Next.js
 .next/
 out/
 build/
 dist/
+
+refimages/
 
 # Env
 .env

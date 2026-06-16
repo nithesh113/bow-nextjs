@@ -2,6 +2,7 @@
 
 import bcrypt from 'bcryptjs'
 import { redirect } from 'next/navigation'
+import { revalidatePath } from 'next/cache'
 import { createSession, createToken, destroySession, hashToken } from '@/lib/auth/session'
 import { sendPasswordResetEmail } from '@/lib/auth/forget-passwordtemp'
 import { sendWelcomeEmail } from '@/lib/auth/welcome-temp'
@@ -22,13 +23,27 @@ function normalizeEmail(email: string) {
   return email.toLowerCase()
 }
 
+function getStrength(pw: string): number {
+  if (!pw) return 0
+  let score = 0
+  if (pw.length >= 8) score++
+  if (pw.length >= 12) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw)) score++
+  if (/[^a-zA-Z0-9]/.test(pw)) score++
+  return Math.min(5, score)
+}
+
 export async function registerAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
   const name = readString(formData, 'name')
   const email = normalizeEmail(readString(formData, 'email'))
   const password = String(formData.get('password') || '')
+  const confirmPassword = String(formData.get('confirmPassword') || '')
 
   if (!name || !email || !password) return { error: 'Fill in all fields.' }
+  if (password !== confirmPassword) return { error: 'Passwords do not match.' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
+  if (getStrength(password) < 3) return { error: 'Password is too weak. Use a mix of uppercase, lowercase, numbers, and symbols.' }
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   if (existing) return { error: 'An account already exists for this email.' }
@@ -45,7 +60,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
 
   const token = createToken()
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000)
-  
+
   await prisma.verificationToken.create({
     data: {
       identifier: email,
@@ -56,6 +71,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
 
   const appUrl = process.env.APP_URL || 'http://localhost:3000'
   const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+  await sendWelcomeEmail(email, name)
 
   if (!emailRes.success) {
     // Delete the user and token so they can try again
@@ -151,6 +167,7 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
 
 export async function logoutAction() {
   await destroySession()
+  revalidatePath('/', 'layout')
   redirect('/')
 }
 

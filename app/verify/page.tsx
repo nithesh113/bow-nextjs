@@ -19,7 +19,7 @@ export default function VerifyPage({ searchParams }: VerifyPageProps) {
       <div>
         <p style={{ color: 'var(--muted)', lineHeight: 1.6, fontSize: '14px', textAlign: 'center', marginBottom: 8 }}>
           You must verify your email before accessing your dashboard.
-          If you didn't receive an email, check your spam folder or request a new one below.
+          If you didn&apos;t receive an email, check your spam folder or request a new one below.
         </p>
 
         <div style={{
@@ -35,7 +35,7 @@ export default function VerifyPage({ searchParams }: VerifyPageProps) {
           textTransform: 'uppercase',
           letterSpacing: '0.05em',
         }}>
-          Didn't receive the email?
+          Didn&apos;t receive the email?
         </p>
 
         <ResendVerificationForm defaultEmail={email} />
