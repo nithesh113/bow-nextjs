@@ -145,7 +145,9 @@ export async function getCategories(): Promise<CategoryData[]> {
     orderBy: { sortOrder: 'asc' },
   })
   // Only return top-level (no parentId)
-  return cats.filter(c => !c.parentId).map(mapCategory)
+  return (cats as Array<{ parentId: string | null } & Record<string, unknown>>)
+    .filter((c): c is { parentId: null } => !c.parentId)
+    .map(mapCategory)
 }
 
 export async function createCategory(
@@ -233,7 +235,8 @@ export async function getExpenses(monthKey: string): Promise<ExpenseData[]> {
     orderBy: { date: 'desc' },
   })
 
-  return expenses.map(e => ({
+  type Row = (typeof expenses)[number]
+  return expenses.map((e: Row) => ({
     id: e.id,
     categoryId: e.categoryId,
     subcategoryId: e.subcategoryId,

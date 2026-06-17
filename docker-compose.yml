@@ -1,0 +1,39 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: bow-nextjs:latest
+    container_name: bow-web
+    restart: unless-stopped
+    ports:
+      - "${HOST_PORT:-3000}:${CONTAINER_PORT:-3000}"
+    env_file:
+      - .env
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # Postgres runs *next to* the app if you want a fully self-contained
+  # deployment. Currently BOW uses Neon (serverless Postgres), so this
+  # service is commented out. To switch on a VPS, just uncomment and
+  # set DATABASE_URL=postgresql://bow:bow@db:5432/bow in .env.
+  #
+  # db:
+  #   image: postgres:16-alpine
+  #   container_name: bow-db
+  #   restart: unless-stopped
+  #   environment:
+  #     POSTGRES_USER: bow
+  #     POSTGRES_PASSWORD: bow
+  #     POSTGRES_DB: bow
+  #   volumes:
+  #     - bow-pg-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #
+  # volumes:
+  #   bow-pg-data:

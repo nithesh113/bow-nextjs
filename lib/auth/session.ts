@@ -35,27 +35,35 @@ export async function createSession(userId: string) {
     },
   })
 
-  cookies().set(SESSION_COOKIE, token, {
+  const cookieStore = await cookies()
+  // Only mark Secure when the request is actually over HTTPS. Mobile devices on
+  // LAN IPs (http://192.168.x.x:3000) need a non-Secure cookie to stay logged
+  // in; HTTPS deployments still get the Secure flag automatically.
+  const isHttps = process.env.NODE_ENV === 'production'
+    && (process.env.APP_URL?.startsWith('https://') ?? false)
+  cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isHttps,
     path: '/',
     expires: expiresAt,
   })
 }
 
 export async function destroySession() {
-  const token = cookies().get(SESSION_COOKIE)?.value
+  const cookieStore = await cookies()
+  const token = cookieStore.get(SESSION_COOKIE)?.value
 
   if (token) {
     await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } })
   }
 
-  cookies().delete(SESSION_COOKIE)
+  cookieStore.delete(SESSION_COOKIE)
 }
 
 export async function getCurrentUser(): Promise<AuthUser | null> {
-  const token = cookies().get(SESSION_COOKIE)?.value
+  const cookieStore = await cookies()
+  const token = cookieStore.get(SESSION_COOKIE)?.value
   if (!token) return null
 
   const session = await prisma.session.findFirst({

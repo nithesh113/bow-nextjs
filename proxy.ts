@@ -4,7 +4,7 @@ import { SESSION_COOKIE } from '@/lib/auth/constants'
 const PUBLIC_PATHS = ['/', '/login', '/register', '/forgot-password', '/reset-password']
 const PROTECTED_PATHS = ['/dashboard']
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
   const isPublic = PUBLIC_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))
   const isProtected = PROTECTED_PATHS.some((path) => pathname === path || pathname.startsWith(`${path}/`))

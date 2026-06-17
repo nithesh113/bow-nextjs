@@ -1,12 +1,10 @@
-import dynamic from 'next/dynamic'
 import { redirect } from 'next/navigation'
 import { getCurrentUser } from '@/lib/auth/session'
-
-const AppShell = dynamic(() => import('@/components/layout/AppShell'), { ssr: false })
+import AppShellLoader from '@/components/layout/AppShellLoader'
 
 export default async function DashboardPage() {
   const user = await getCurrentUser()
   if (!user) redirect('/login')
 
-  return <AppShell user={user} />
+  return <AppShellLoader user={user} />
 }

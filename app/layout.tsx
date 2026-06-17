@@ -1,20 +1,12 @@
 import type { Metadata, Viewport } from 'next'
-import { Syne, JetBrains_Mono } from 'next/font/google'
-import { Toaster } from 'sonner'
+import { Toaster } from '@/components/ToasterClient'
 import './globals.css'
 
-const syne = Syne({
-  subsets: ['latin'],
-  weight: ['400', '600', '700', '800'],
-  variable: '--font-syne',
-  display: 'swap',
-})
-const mono = JetBrains_Mono({
-  subsets: ['latin'],
-  weight: ['300', '400', '500'],
-  variable: '--font-mono',
-  display: 'swap',
-})
+// Skip static prerendering of all routes — the static-export pass on Linux
+// trips a known Next.js 14.2.x bug where the next/link chunk calls
+// useContext() against a null React during the prerender phase.
+// Pages still render correctly at request time as fully dynamic server routes.
+export const dynamic = 'force-dynamic'
 
 export const metadata: Metadata = {
   title: '🇯🇵 Work Calendar — BOW v6.3',
@@ -31,7 +23,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" className={`${syne.variable} ${mono.variable}`}>
+    <html lang="en">
       <body>
         {children}
         <Toaster richColors position="top-center" />
