@@ -1,22 +1,10 @@
-import { Resend } from 'resend'
-
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null
-
-const FROM_EMAIL =
-  process.env.EMAIL_FROM || 'BOW <onboarding@resend.dev>'
+import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
 export async function sendVerificationEmail(
   email: string,
   verifyUrl: string
 ) {
-  if (!resend) {
-    throw new Error('RESEND_API_KEY is required')
-  }
-
-  const { data, error } = await resend.emails.send({
-    from: FROM_EMAIL,
+  const result = await sendMail({
     to: email,
     subject: 'Verify your BOW email',
     html: `
@@ -72,14 +60,14 @@ export async function sendVerificationEmail(
                 If the button doesn't work, copy and paste this link:
               </p>
 
-              <p style="
-                margin-top:10px;
-                color:#3b82f6;
-                word-break:break-all;
-                font-size:13px;
-              ">
-                ${verifyUrl}
-              </p>
+              <p
+                style="
+                  margin-top:10px;
+                  color:#3b82f6;
+                  word-break:break-all;
+                  font-size:13px;
+                "
+              >${verifyUrl}</p>
             </div>
           </div>
         </div>
@@ -87,11 +75,5 @@ export async function sendVerificationEmail(
     `,
   })
 
-  if (error) {
-    console.error('Resend API Error during verification email:', error)
-    return { success: false, error: error.message }
-  } else {
-    console.log('Verification email sent successfully:', data)
-    return { success: true }
-  }
+  return result
 }
