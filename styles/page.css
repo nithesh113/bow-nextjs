@@ -38,17 +38,33 @@
   gap: 12px;
 }
 .logo {
-  font-size: 24px;
-  font-weight: 800;
-  letter-spacing: -1px;
-  margin: 0;
   color: var(--text);
+  font-weight: 800;
+  font-size: 24px;
+  letter-spacing: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+}
+.logo img,
+.logo svg {
+  width: 32px;
+  height: 32px;
+}
+.logo-text {
+  display: inline-block;
 }
 .center-logo {
   justify-content: center;
   display: flex;
+  color: var(--text);
+  font-weight: 800;
   font-size: 20px;
   margin-bottom: 8px;
+  letter-spacing: -1px;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
 }
 .subtitle {
   font-size: 14px;

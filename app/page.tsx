@@ -1,6 +1,22 @@
-import React from 'react';
-import '@/styles/page.css'; 
+import '@/styles/page.css';
 import Link from 'next/link';
+import Image from 'next/image';
+import React from 'react';
+
+// --- Configuration ---
+const SITE = 'baitowallet';
+const TAGLINE = 'Budget + Shift + Earnings Tracker';
+
+function Logo(){
+  return (
+    <Image
+      src="/logo.png"
+      alt={SITE}
+      width={24}
+      height={24}
+    />
+  );
+}
 
 // --- DATA ARRAYS ---
 const statistics = [
@@ -61,8 +77,8 @@ export default function LandingPage() {
       <header className="header">
         <div className="container header-content">
           <div className="logo-group">
-            <h1 className="logo">BOW</h1>
-            <p className="subtitle">Budget + Shift + Earnings Tracker</p>
+            <Logo />
+            <p className="subtitle">{TAGLINE}</p>
           </div>
           <div className="nav-group">
             <Link href="/login" className="btn-secondary" style={{ textDecoration: 'none', textAlign: 'center' }}>
@@ -155,7 +171,7 @@ export default function LandingPage() {
                 ))}
               </div>
               <div className="arrow">➔</div>
-              <div className="bow-giant">BOW</div>
+              <Logo />
             </div>
           </div>
         </section>
@@ -230,9 +246,7 @@ export default function LandingPage() {
             <div className="budget-flow-container">
               {budgetBuckets.map((bucket, i) => (
                 <React.Fragment key={i}>
-                  <div className={`bucket-card ${i === 0 ? 'bucket-first' : ''}`}>
-                    {bucket}
-                  </div>
+                  <div className={`bucket-card ${i === 0 ? 'bucket-first' : ''}`}>{bucket}</div>
                   {i < budgetBuckets.length - 1 && <div className="down-arrow">↓</div>}
                 </React.Fragment>
               ))}
@@ -309,9 +323,12 @@ export default function LandingPage() {
       {/* FOOTER */}
       <footer className="footer">
         <div className="container">
-          <h3 className="logo center-logo">BOW</h3>
-          <p className="footer-tagline">Budget + Shift + Earnings Tracker</p>
-          <p className="copyright">&copy; {new Date().getFullYear()} BOW Tracker. All rights reserved.</p>
+          <h3 className="logo center-logo">
+            <img src="/logo.png" alt={SITE} width={32} height={32} />
+            <span className="logo-text">{SITE}</span>
+          </h3>
+          <p className="footer-tagline">{TAGLINE}</p>
+          <p className="copyright">&copy; {new Date().getFullYear()} {SITE}. All rights reserved.</p>
         </div>
       </footer>
     </div>

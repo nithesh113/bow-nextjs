@@ -1,23 +1,10 @@
-import { Resend } from 'resend'
-
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null
-
-const FROM_EMAIL =
-  process.env.EMAIL_FROM || 'BOW <onboarding@resend.dev>'
-
+import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
 export async function sendPasswordChangedEmail(
   email: string,
   name?: string
 ) {
-  if (!resend) {
-    throw new Error('RESEND_API_KEY is required')
-  }
-
-  await resend.emails.send({
-    from: FROM_EMAIL,
+  await sendMail({
     to: email,
     subject: 'Your BOW password was changed successfully',
     html: `

@@ -37,7 +37,6 @@ COPY . .
 RUN unset NODE_ENV && export NODE_ENV=production && \
     node --require ./scripts/node-realpath-patch.cjs ./node_modules/prisma/build/index.js generate && \
     NEXT_TELEMETRY_DISABLED=1 npm run build
-
 # ── Stage 2: minimal runtime image ─────────────────────────────────
 FROM node:20-bookworm-slim AS runner
 

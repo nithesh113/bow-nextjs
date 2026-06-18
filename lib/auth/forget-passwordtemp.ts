@@ -1,22 +1,10 @@
-import { Resend } from 'resend'
-
-const resend = process.env.RESEND_API_KEY
-  ? new Resend(process.env.RESEND_API_KEY)
-  : null
-
-const FROM_EMAIL =
-  process.env.EMAIL_FROM || 'BOW <onboarding@resend.dev>'
+import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
 export async function sendPasswordResetEmail(
   email: string,
   resetUrl: string
 ) {
-  if (!resend) {
-    throw new Error('RESEND_API_KEY is required')
-  }
-
-  await resend.emails.send({
-    from: FROM_EMAIL,
+  await sendMail({
     to: email,
     subject: 'Reset your BOW password',
     html: `
@@ -72,14 +60,14 @@ export async function sendPasswordResetEmail(
                 If the button doesn't work, copy and paste this link:
               </p>
 
-              <p style="
-                margin-top:10px;
-                color:#3b82f6;
-                word-break:break-all;
-                font-size:13px;
-              ">
-                ${resetUrl}
-              </p>
+              <p
+                style="
+                  margin-top:10px;
+                  color:#3b82f6;
+                  word-break:break-all;
+                  font-size:13px;
+                "
+              >${resetUrl}</p>
             </div>
 
             <div style="
