@@ -82,14 +82,15 @@ export default function BudgetView() {
     const catNameToStoreId = new Map(mergedCats.map(c => [c.name.toLowerCase(), c.id]))
 
     const mappedExps = dbExps
-      .filter(e => e.categoryName && e.amount > 0)
-      .map(e => ({
+      .filter((e) => e.categoryName)
+      .filter((e, idx, arr) => idx === arr.findIndex((x) => x.categoryName === e.categoryName && x.date === e.date && x.amount === e.amount && (x.note || '') === (e.note || '')))
+      .map((e) => ({
         categoryId: catNameToStoreId.get(e.categoryName.toLowerCase()) ?? 0,
         amount: e.amount,
         date: e.date,
         note: e.note,
       }))
-      .filter(e => {
+      .filter((e) => {
         if (e.categoryId === 0) console.warn('[BudgetView DB] dropped expense with no matching category:', e)
         return e.categoryId !== 0
       })
@@ -130,10 +131,10 @@ export default function BudgetView() {
     return map
   }, [expenses])
 
-  const sortedCategories = useMemo(() =>
-    [...categories].sort((a, b) => (spentByCategory[b.id] || 0) - (spentByCategory[a.id] || 0)),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [categories, expenses])
+  const sortedCategories = useMemo(() => {
+    const withSpend = categories.filter((cat) => (spentByCategory[cat.id] || 0) > 0)
+    return [...withSpend].sort((a, b) => (spentByCategory[b.id] || 0) - (spentByCategory[a.id] || 0))
+  }, [categories, expenses])
 
   // Render guard (after all hooks)
   if (!month) {
