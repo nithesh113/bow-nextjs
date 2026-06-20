@@ -1,14 +1,27 @@
 'use client'
 
+import { useEffect, useRef } from 'react'
 import { useTemplatesStore } from '@/store/useTemplatesStore'
 import { useAppStore } from '@/store/useAppStore'
 import TemplateCard from './TemplateCard'
 import { useJobsStore } from '@/store/useJobsStore'
 
 export default function TemplatesView() {
-  const { templates } = useTemplatesStore()
+  const { templates, fetchTemplatesFromDB } = useTemplatesStore()
   const { jobs } = useJobsStore()
   const { setModal } = useAppStore()
+
+  // Load from database on mount, plus listen for cross-view changes.
+  const initialFetchRef = useRef(false)
+  useEffect(() => {
+    if (initialFetchRef.current) return
+    initialFetchRef.current = true
+    void fetchTemplatesFromDB()
+
+    const handler = () => void fetchTemplatesFromDB()
+    window.addEventListener('bow:template-changed', handler)
+    return () => window.removeEventListener('bow:template-changed', handler)
+  }, [fetchTemplatesFromDB])
 
   return (
     <div style={{ padding: 16 }}>
