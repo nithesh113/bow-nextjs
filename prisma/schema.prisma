@@ -21,6 +21,7 @@ model User {
   passwordResetTokens PasswordResetToken[]
   expenseCategories   ExpenseCategory[]
   expenses            Expense[]
+  templates           UserTemplate[]
 
   @@map("users")
 }
@@ -101,4 +102,21 @@ model Expense {
   @@index([userId, categoryId], map: "expenses_user_cat_idx")
   @@index([userId, date(sort: Desc)], map: "expenses_user_date_desc_idx")
   @@map("expenses")
+}
+
+model UserTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  name      String
+  days      Json     // int[]
+  jobId     String
+  start     String   // "HH:MM"
+  end       String   // "HH:MM"
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_templates")
 }
