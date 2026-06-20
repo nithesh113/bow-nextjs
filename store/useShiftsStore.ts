@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware'
 import type { Shift, ShiftsStore } from '@/types'
 import { recalculateDayTotals } from '@/lib/nightPayEngine'
 import { setDayHours, clearDayHours } from '@/services/storage'
+import { createShifts, type NewShiftInput, type ShiftRow } from '@/app/actions/shifts'
 
 interface ShiftsState {
   shifts: ShiftsStore
@@ -18,6 +19,10 @@ interface ShiftsState {
   ) => void
   recalculateDayHours: (dateKey: string) => void
   setShifts: (shifts: ShiftsStore) => void
+  /** Save a batch of shifts directly to the database. Does NOT touch the
+   *  in-memory `shifts` dictionary, the per-(date,job) hours cache, or
+   *  localStorage — that bridge lands with the calendar migration. */
+  addShiftsToDB: (inputs: NewShiftInput[]) => Promise<ShiftRow[]>
 }
 
 function writeHoursCache(dateKey: string, dayShifts: Shift[]): void {
@@ -83,6 +88,11 @@ export const useShiftsStore = create<ShiftsState>()(
       recalculateDayHours: (dk) => {
         const day = get().shifts[dk] || []
         writeHoursCache(dk, day)
+      },
+
+      addShiftsToDB: async (inputs) => {
+        const rows = await createShifts({ shifts: inputs })
+        return rows
       },
 
       setShifts: (shifts) => set({ shifts }),
