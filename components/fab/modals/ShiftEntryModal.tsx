@@ -52,7 +52,7 @@ function fmtShort(dk: string): string {
 export default function ShiftEntryModal() {
   const { closeModal } = useAppStore()
   const { jobs } = useJobsStore()
-  const { shifts, addShiftsToDB } = useShiftsStore()
+  const { shifts, addShiftsToDB, syncShiftsFromDB } = useShiftsStore()
   const { templates, fetchTemplatesFromDB, apiReady } = useTemplatesStore()
 
   // Templates may not be loaded yet if user opens FAB before Templates tab.
@@ -247,6 +247,8 @@ export default function ShiftEntryModal() {
       }
 
       await addShiftsToDB(inputs)
+      // Pull fresh data from DB so Insights view & calendar reflect the new shifts
+      await syncShiftsFromDB()
       closeModal()
     } catch (err: unknown) {
       const e = err as { message?: string }

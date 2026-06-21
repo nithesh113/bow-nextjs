@@ -4,7 +4,7 @@ import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser, createToken, hashToken } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
 
-export async function updateAccount(data: { name: string; email: string; currency: string; location: string }) {
+export async function updateAccount(data: { name: string; email: string; currency: string; location: string; schoolFee: number }) {
   const user = await getCurrentUser()
   
   if (!user) {
@@ -19,6 +19,7 @@ export async function updateAccount(data: { name: string; email: string; currenc
         email: data.email,
         currency: data.currency,
         location: data.location,
+        schoolFee: data.schoolFee,
       }
     })
     return { success: true }

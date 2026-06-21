@@ -3,7 +3,8 @@ import { persist } from 'zustand/middleware'
 import type { Shift, ShiftsStore } from '@/types'
 import { recalculateDayTotals } from '@/lib/nightPayEngine'
 import { setDayHours, clearDayHours } from '@/services/storage'
-import { createShifts, type NewShiftInput, type ShiftRow } from '@/app/actions/shifts'
+import { createShifts, getAllShifts, type NewShiftInput, type ShiftRow } from '@/app/actions/shifts'
+import { useJobsStore } from './useJobsStore'
 
 interface ShiftsState {
   shifts: ShiftsStore
@@ -19,10 +20,8 @@ interface ShiftsState {
   ) => void
   recalculateDayHours: (dateKey: string) => void
   setShifts: (shifts: ShiftsStore) => void
-  /** Save a batch of shifts directly to the database. Does NOT touch the
-   *  in-memory `shifts` dictionary, the per-(date,job) hours cache, or
-   *  localStorage — that bridge lands with the calendar migration. */
   addShiftsToDB: (inputs: NewShiftInput[]) => Promise<ShiftRow[]>
+  syncShiftsFromDB: () => Promise<void>
 }
 
 function writeHoursCache(dateKey: string, dayShifts: Shift[]): void {
@@ -93,6 +92,43 @@ export const useShiftsStore = create<ShiftsState>()(
       addShiftsToDB: async (inputs) => {
         const rows = await createShifts({ shifts: inputs })
         return rows
+      },
+
+      syncShiftsFromDB: async () => {
+        try {
+          const dbShifts = await getAllShifts()
+          const nextShifts: ShiftsStore = {}
+
+          for (const dbs of dbShifts) {
+            const dk = dbs.date
+            if (!nextShifts[dk]) {
+              nextShifts[dk] = []
+            }
+            nextShifts[dk].push({
+              jobId: dbs.jobId,
+              start: dbs.start,
+              end: dbs.end,
+              breaks: [],
+            })
+          }
+
+          const jobs = useJobsStore.getState().jobs
+          const allJobIds = jobs.map(j => j.id)
+          const oldKeys = Object.keys(get().shifts)
+          for (const ok of oldKeys) {
+            if (!nextShifts[ok]) {
+              clearDayHours(ok, allJobIds)
+            }
+          }
+
+          for (const [dk, dayShifts] of Object.entries(nextShifts)) {
+            writeHoursCache(dk, dayShifts)
+          }
+
+          set({ shifts: nextShifts })
+        } catch (err) {
+          console.error('[useShiftsStore] syncShiftsFromDB failed', err)
+        }
       },
 
       setShifts: (shifts) => set({ shifts }),

@@ -25,16 +25,19 @@ import ExpenseEntryModal from '@/components/fab/modals/ExpenseEntryModal'
 import ShiftEntryModal from '@/components/fab/modals/ShiftEntryModal'
 import ActualTimeModal from '@/components/fab/modals/ActualTimeModal'
 import TemplateEntryModal from '@/components/fab/modals/TemplateEntryModal'
+import { useShiftsStore } from '@/store/useShiftsStore'
 import { AuthUser } from '@/lib/auth/session'
 
 export default function AppShell({ user }: { user: AuthUser }) {
   const { activeTab, activeBottomTab, openModal, fabExpanded } = useAppStore()
+  const { syncShiftsFromDB } = useShiftsStore()
 
   // Single boot: hook up focus/visibility/event listeners that bust
   // the expense cache so the next view rendering refetches from DB.
   useEffect(() => {
     startExpensesInvalidationListeners()
-  }, [])
+    syncShiftsFromDB()
+  }, [syncShiftsFromDB])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
@@ -50,7 +53,7 @@ export default function AppShell({ user }: { user: AuthUser }) {
           {activeTab === 'templates' && <TemplatesView />}
           {activeTab === 'budget'    && <BudgetView />}
           {activeTab === 'expenses'  && <ExpenseView />}
-          {activeTab === 'summary'   && <SummaryView />}
+          {activeTab === 'summary'   && <SummaryView user={user} />}
           {activeTab === 'account'   && <AccountView user={user} />}
         </>
       )}

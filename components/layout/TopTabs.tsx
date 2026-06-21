@@ -8,7 +8,7 @@ const TABS: { id: TopTab; label: string }[] = [
   { id: 'templates', label: '🔁 Templates' },
   { id: 'budget',    label: '💰 Budget'    },
   { id: 'expenses',  label: '💴 Expenses'  },
-  { id: 'summary',   label: '📊 Summary'   },
+  { id: 'summary',   label: '📊 Insights & Analysis' },
   { id: 'account',   label: '👤 Account'   },
 ]
 

@@ -169,3 +169,13 @@ export async function deleteShiftsByDate(date: string): Promise<{ count: number 
   revalidatePath('/dashboard')
   return { count }
 }
+
+/** Fetch all DB-backed shifts for the authenticated user. */
+export async function getAllShifts(): Promise<ShiftRow[]> {
+  const userId = await requireUserId()
+  const rows = await prisma.userShift.findMany({
+    where: { userId },
+    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+  })
+  return rows.map(mapShift)
+}

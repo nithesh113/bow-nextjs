@@ -47,24 +47,27 @@ export default function AccountView({ user }: { user: AuthUser }) {
   const [email, setEmail] = useState(user.email)
   const [currency, setCurrency] = useState(user.currency || 'JPY')
   const [location, setLocation] = useState(user.location || 'Japan')
+  const [schoolFee, setSchoolFee] = useState<number | ''>(user.schoolFee ?? 840000)
 
   // Reset drafts if user prop changes
   useEffect(() => { setName(user.name) }, [user.name])
   useEffect(() => { setEmail(user.email) }, [user.email])
   useEffect(() => { setCurrency(user.currency || 'JPY') }, [user.currency])
   useEffect(() => { setLocation(user.location || 'Japan') }, [user.location])
+  useEffect(() => { setSchoolFee(user.schoolFee ?? 840000) }, [user.schoolFee])
 
   // Dirty check: true when any field differs from the server value
   const isDirty =
     name !== user.name ||
     email !== user.email ||
     currency !== (user.currency || 'JPY') ||
-    location !== (user.location || 'Japan')
+    location !== (user.location || 'Japan') ||
+    schoolFee !== (user.schoolFee ?? 840000)
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
     setIsPending(true)
-    const res = await updateAccount({ name, email, currency, location })
+    const res = await updateAccount({ name, email, currency, location, schoolFee: Number(schoolFee) })
     if (res.success) {
       toast.success('Account updated successfully!')
       router.refresh()
@@ -201,7 +204,7 @@ export default function AccountView({ user }: { user: AuthUser }) {
             />
           </FormRow>
 
-          <FormRow label="Email Address" icon="📧" last>
+          <FormRow label="Email Address" icon="📧">
             <input
               name="email"
               type="email"
@@ -209,6 +212,18 @@ export default function AccountView({ user }: { user: AuthUser }) {
               onChange={(e) => setEmail(e.target.value)}
               required
               placeholder="you@example.com"
+              style={inputStyle}
+            />
+          </FormRow>
+
+          <FormRow label="School Fee Target" icon="🎓" last>
+            <input
+              name="schoolFee"
+              type="number"
+              value={schoolFee}
+              onChange={(e) => setSchoolFee(e.target.value === '' ? '' : Number(e.target.value))}
+              required
+              placeholder="840000"
               style={inputStyle}
             />
           </FormRow>

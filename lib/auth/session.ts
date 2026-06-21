@@ -11,6 +11,7 @@ export type AuthUser = {
   email: string
   currency: string | null
   location: string | null
+  schoolFee: number
   emailVerified: Date | null
 }
 
@@ -79,6 +80,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
           email: true,
           currency: true,
           location: true,
+          schoolFee: true,
           emailVerified: true,
         },
       },
