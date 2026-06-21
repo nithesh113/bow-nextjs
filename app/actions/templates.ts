@@ -13,6 +13,7 @@ export interface TemplateRow {
   jobId: string
   start: string
   end: string
+  workDetails: string | null
   createdAt: string
   updatedAt: string
 }
@@ -25,6 +26,7 @@ export interface TemplateData {
   jobId: string
   start: string
   end: string
+  workDetails?: string | null
 }
 
 // ── Helpers ────────────────────────────────────────
@@ -43,6 +45,7 @@ function mapTemplate(row: any): TemplateRow {
     jobId: row.jobId,
     start: row.start,
     end: row.end,
+    workDetails: row.workDetails ?? null,
     createdAt: row.createdAt?.toISOString?.() ?? '',
     updatedAt: row.updatedAt?.toISOString?.() ?? '',
   }
@@ -58,14 +61,13 @@ export async function getTemplates(): Promise<TemplateRow[]> {
   return rows.map(mapTemplate)
 }
 
-export async function createTemplate(data: {
-  name: string
-  days: number[]
-  jobId: string
-  start: string
-  end: string
-}): Promise<TemplateRow> {
+export async function createTemplate(data: TemplateData): Promise<TemplateRow> {
   const userId = await requireUserId()
+  // Normalize workDetails: trim and treat empties as null so the DB stays clean.
+  const wd =
+    typeof data.workDetails === 'string' && data.workDetails.trim().length > 0
+      ? data.workDetails.trim()
+      : null
   const row = await prisma.userTemplate.create({
     data: {
       userId,
@@ -74,6 +76,7 @@ export async function createTemplate(data: {
       jobId: data.jobId,
       start: data.start,
       end: data.end,
+      workDetails: wd,
     },
   })
 
@@ -89,12 +92,20 @@ export async function updateTemplate(
     jobId?: string
     start?: string
     end?: string
+    workDetails?: string | null
   }
 ): Promise<TemplateRow> {
   const userId = await requireUserId()
+  // Normalize workDetails updates the same way as create, so a user
+  // clearing the field actually clears it instead of storing "".
+  let normalizedWorkDetails: string | null | undefined = data.workDetails
+  if (typeof data.workDetails === 'string') {
+    const trimmed = data.workDetails.trim()
+    normalizedWorkDetails = trimmed.length > 0 ? trimmed : null
+  }
   const row = await prisma.userTemplate.update({
     where: { id, userId },
-    data,
+    data: { ...data, workDetails: normalizedWorkDetails },
   })
   revalidatePath('/dashboard')
   return mapTemplate(row)

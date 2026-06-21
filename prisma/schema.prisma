@@ -106,15 +106,16 @@ model Expense {
 }
 
 model UserTemplate {
-  id        String   @id @default(uuid()) @db.Uuid
-  userId    String   @db.Uuid
-  name      String
-  days      Json     // int[]
-  jobId     String
-  start     String   // "HH:MM"
-  end       String   // "HH:MM"
-  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  name        String
+  days        Json     // int[]
+  jobId       String
+  start       String   // "HH:MM"
+  end         String   // "HH:MM"
+  workDetails String?  // optional free-text per-template note (branches, breaks, etc.)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -123,16 +124,17 @@ model UserTemplate {
 }
 
 model UserShift {
-  id         String   @id @default(uuid()) @db.Uuid
-  userId     String   @db.Uuid
-  date       DateTime @db.Date
-  jobId      String
-  start      String   // "HH:MM"
-  end        String   // "HH:MM"
-  templateId String?  @db.Uuid
-  source     String   @default("manual") // 'manual' | 'template' | 'apply'
-  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  date        DateTime @db.Date
+  jobId       String
+  start       String   // "HH:MM"
+  end         String   // "HH:MM"
+  templateId  String?  @db.Uuid
+  source      String   @default("manual") // 'manual' | 'template' | 'apply'
+  workDetails String?  // optional free-text note (branches, breaks, etc.)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

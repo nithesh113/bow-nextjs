@@ -40,6 +40,7 @@ export function localTemplateToTemplate(
     jobId: t.jobId,
     start: t.start,
     end: t.end,
+    workDetails: t.workDetails ?? null,
   }
 }
 
@@ -52,6 +53,7 @@ export function templateToLocal(t: Template): TemplateData {
     jobId: t.jobId,
     start: t.start,
     end: t.end,
+    workDetails: t.workDetails ?? null,
   }
 }
 

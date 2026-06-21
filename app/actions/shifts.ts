@@ -14,6 +14,7 @@ export interface ShiftRow {
   end: string          // HH:MM
   templateId: string | null
   source: string
+  workDetails: string | null
   createdAt: string
   updatedAt: string
 }
@@ -25,6 +26,7 @@ export interface NewShiftInput {
   end: string          // HH:MM
   templateId?: string
   source?: 'manual' | 'template' | 'apply'
+  workDetails?: string | null
 }
 
 // Hard caps (mirrored client-side in ShiftEntryModal)
@@ -49,6 +51,7 @@ function mapShift(row: any): ShiftRow {
     end: row.end,
     templateId: row.templateId ?? null,
     source: row.source,
+    workDetails: row.workDetails ?? null,
     createdAt: row.createdAt?.toISOString?.() ?? '',
     updatedAt: row.updatedAt?.toISOString?.() ?? '',
   }
@@ -93,6 +96,14 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
   const data = list.map((s) => {
     const err = validateInput(s)
     if (err) throw new Error(err)
+    // Normalize workDetails: trim and treat empties as null so the DB
+    // stays clean. We deliberately do NOT enforce a max length server-side
+    // (the modal enforces 1000 chars on the client); Postgres TEXT would
+    // accept more anyway, and we want to never silently truncate user notes.
+    const wd =
+      typeof s.workDetails === 'string' && s.workDetails.trim().length > 0
+        ? s.workDetails.trim()
+        : null
     return {
       userId,
       date: parseDateKey(s.date)!,
@@ -101,6 +112,7 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
       end: s.end,
       templateId: s.templateId || null,
       source: s.source || 'manual',
+      workDetails: wd,
     }
   })
 

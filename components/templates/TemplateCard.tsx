@@ -50,9 +50,12 @@ export default function TemplateCard({ template: t, jobs }: Props) {
       <button
         onClick={() => setModal('applyTemplate', t.id)}
         style={{
-          background: 'var(--accent)', color: '#fff',
-          border: 'none', borderRadius: 6, padding: '6px 14px',
-          fontSize: 12, fontWeight: 700, cursor: 'pointer',
+          width: '100%', padding: '10px 14px',
+          background: 'rgba(59,130,246,0.1)',
+          border: '1px solid rgba(59,130,246,0.35)',
+          color: 'var(--accent)',
+          borderRadius: 8, fontSize: 14, fontWeight: 700, cursor: 'pointer',
+          transition: 'background 120ms ease',
         }}
       >
         Apply →

@@ -16,6 +16,9 @@ type ConflictPolicy = 'skip' | 'append'
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
 const MAX_SHIFTS_PER_REQUEST = 100
 const MAX_SHIFTS_PER_DAY = 5
+const WORK_DETAILS_MAX = 1000
+const WORK_DETAILS_PLACEHOLDER =
+  'e.g.\n11:00–15:00  McDonald\u2019s Shibuya\n15:00–16:00  Break\n16:00–20:00  McDonald\u2019s Shinjuku'
 
 /** Add `days` calendar days to a YYYY-MM-DD key, returning a YYYY-MM-DD key. */
 function addDays(dk: string, days: number): string {
@@ -81,6 +84,33 @@ export default function ShiftEntryModal() {
 
   // ── Conflict handling ────────────────────────────────────────
   const [conflictPolicy, setConflictPolicy] = useState<ConflictPolicy>('skip')
+
+  // ── Work details note (branches, breaks, etc.) ───────────────
+  // Toggle defaults OFF so the existing UX is unchanged. When ON, the user
+  // can write free-text — one shared note across all selected dates.
+  const [workDetailsToggle, setWorkDetailsToggle] = useState(false)
+  const [workDetailsText, setWorkDetailsText] = useState('')
+
+  // If the user picks a template that already has a workDetails note,
+  // auto-toggle ON and prefill the textarea so they can edit or accept it.
+  // Switching to a template without a note clears the textarea (toggle off
+  // only if it was empty — respect a user-typed note they haven't saved yet).
+  useEffect(() => {
+    if (source !== 'template' || !selectedTpl) {
+      // Custom mode — leave any user-typed note alone; they may switch back.
+      return
+    }
+    const tplNote = (selectedTpl.workDetails ?? '').trim()
+    if (tplNote.length > 0) {
+      setWorkDetailsToggle(true)
+      setWorkDetailsText(tplNote)
+    } else if (workDetailsText.length === 0) {
+      setWorkDetailsToggle(false)
+    }
+    // We intentionally do NOT clear `workDetailsText` when the template has
+    // no note — that would wipe a user-typed note before they hit Save.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [templateId, source])
 
   // ── Save state ───────────────────────────────────────────────
   const [saving, setSaving] = useState(false)
@@ -186,6 +216,12 @@ export default function ShiftEntryModal() {
       const shiftSource: typeof sources[number] =
         selectedTpl && source !== 'custom' ? 'template' : 'manual'
 
+      // Only persist workDetails when the toggle is ON. If toggle is OFF,
+      // even text typed in the textarea is discarded (UX: toggle gates save).
+      const trimmedNote = workDetailsText.trim()
+      const detailsToSave: string | null =
+        workDetailsToggle && trimmedNote.length > 0 ? trimmedNote : null
+
       const inputs = preview
         .filter((p) => !(p.wouldConflict && conflictPolicy === 'skip'))
         .filter((p) => (shifts[p.dk]?.length ?? 0) < MAX_SHIFTS_PER_DAY)
@@ -196,6 +232,7 @@ export default function ShiftEntryModal() {
           end: previewShift.end,
           templateId: selectedTpl?.id,
           source: shiftSource,
+          workDetails: detailsToSave,
         }))
 
       if (inputs.length === 0) {
@@ -356,6 +393,73 @@ export default function ShiftEntryModal() {
             onAdd={onPickDate}
             onRemove={removeDate}
           />
+        )}
+      </div>
+
+      {/* ── Work details note (toggle) ─────────────────────────── */}
+      <div style={{ marginBottom: 14 }}>
+        <label style={L}>
+          <input
+            type="checkbox"
+            checked={workDetailsToggle}
+            onChange={(e) => {
+              setWorkDetailsToggle(e.target.checked)
+              // Turning the toggle OFF clears the textarea so the user
+              // doesn't see stale text they assumed would be saved.
+              if (!e.target.checked) setWorkDetailsText('')
+            }}
+            style={{ marginRight: 6, verticalAlign: 'middle' }}
+          />
+          Add work details (branches, break locations, etc.)
+        </label>
+
+        {workDetailsToggle && (
+          <div style={{ marginTop: 6 }}>
+            <textarea
+              value={workDetailsText}
+              onChange={(e) => {
+                const next = e.target.value
+                // Soft-cap at WORK_DETAILS_MAX. If the user pastes more,
+                // we keep the first WORK_DETAILS_MAX chars (so they don't
+                // lose typing) and turn the counter red — never silent crop.
+                setWorkDetailsText(
+                  next.length > WORK_DETAILS_MAX ? next.slice(0, WORK_DETAILS_MAX) : next
+                )
+              }}
+              placeholder={WORK_DETAILS_PLACEHOLDER}
+              rows={4}
+              maxLength={WORK_DETAILS_MAX} // browser paste cap (best-effort)
+              style={{
+                width: '100%',
+                background: 'rgba(255,255,255,0.04)',
+                border: '1px solid var(--border)',
+                color: 'var(--text)',
+                padding: '8px 10px',
+                borderRadius: 8,
+                fontFamily: 'inherit',
+                fontSize: 13,
+                lineHeight: 1.45,
+                resize: 'vertical',
+                minHeight: 80,
+                outline: 'none',
+              }}
+            />
+            <div
+              style={{
+                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                marginTop: 4, fontSize: 11, color: 'var(--muted)',
+              }}
+            >
+              <span>
+                {workDetailsText.trim().length === 0
+                  ? <>Optional. Write anything that helps you remember the day — branch changes, break locations, notes to self.</>
+                  : <>Will be saved to all <b style={{ color: 'var(--text)' }}>{selectedDates.length || 'selected'}</b> date{(selectedDates.length || selectedDates.length) !== 1 ? 's' : ''} as a shared note.</>}
+              </span>
+              <span style={{ color: workDetailsText.length >= WORK_DETAILS_MAX ? 'var(--red, #f87171)' : 'var(--muted)' }}>
+                {workDetailsText.length}/{WORK_DETAILS_MAX}
+              </span>
+            </div>
+          </div>
         )}
       </div>
 

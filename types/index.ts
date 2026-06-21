@@ -38,6 +38,7 @@ export interface Template {
   jobId: string
   start: string   // "HH:MM"
   end: string     // "HH:MM"
+  workDetails?: string | null  // optional free-text note (branches, breaks, etc.)
 }
 
 // ── Budget ──────────────────────────────────────
