@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Modal, { btnPrimary } from '@/components/ui/Modal'
 import { useAppStore } from '@/store/useAppStore'
 import { useJobsStore } from '@/store/useJobsStore'
@@ -278,11 +278,12 @@ export default function ShiftEntryModal() {
             </div>
           ) : (
             <>
-              <select value={templateId} onChange={(e) => setTemplateId(e.target.value)} style={{ width: '100%' }}>
-                {templates.map((t) => (
-                  <option key={t.id} value={t.id}>{t.name} ({t.start}–{t.end})</option>
-                ))}
-              </select>
+              <Dropdown<{ id: string; label: string }>
+                items={templates.map((t) => ({ id: t.id, label: `${t.name} (${t.start}–${t.end})` }))}
+                value={templateId}
+                onChange={(v) => setTemplateId(v)}
+                placeholder="— Choose a template —"
+              />
               {selectedTpl && (
                 <div style={{ marginTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, color: 'var(--muted)' }}>
                   <span>
@@ -301,11 +302,14 @@ export default function ShiftEntryModal() {
       ) : (
         <div style={{ marginBottom: 14 }}>
           <label style={L}>Job</label>
-          <select value={jobId} onChange={(e) => setJobId(e.target.value)} style={{ width: '100%' }}>
-            {jobs.length === 0
-              ? <option value="">No jobs yet — create one in the Jobs tab</option>
-              : jobs.map((j) => <option key={j.id} value={j.id}>{j.name}</option>)}
-          </select>
+          <Dropdown<{ id: string; label: string }>
+            items={jobs.length === 0
+              ? [{ id: '', label: 'No jobs yet — create one in the Jobs tab' }]
+              : jobs.map((j) => ({ id: j.id, label: j.name }))}
+            value={jobId}
+            onChange={(v) => setJobId(v)}
+            placeholder="— Choose a job —"
+          />
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginTop: 10 }}>
             <div>
               <label style={L}>Start</label>
@@ -362,10 +366,14 @@ export default function ShiftEntryModal() {
             ⚠ {summary.conflictCount} selected date{summary.conflictCount !== 1 ? 's have' : ' has'} existing shifts
           </div>
           <label style={L}>For those dates,</label>
-          <select value={conflictPolicy} onChange={(e) => setConflictPolicy(e.target.value as ConflictPolicy)} style={{ width: '100%' }}>
-            <option value="skip">Skip them (leave existing shifts alone)</option>
-            <option value="append">Add this shift on top of existing ones</option>
-          </select>
+          <Dropdown<{ id: ConflictPolicy; label: string }>
+            items={[
+              { id: 'skip', label: 'Skip them (leave existing shifts alone)' },
+              { id: 'append', label: 'Add this shift on top of existing ones' },
+            ]}
+            value={conflictPolicy}
+            onChange={(v) => setConflictPolicy(v as ConflictPolicy)}
+          />
         </div>
       )}
 
@@ -408,11 +416,23 @@ export default function ShiftEntryModal() {
         <div style={{ background: 'var(--card)', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: 'var(--muted)' }}>
           {previewJob ? (
             <>
-              Per shift: <strong style={{ color: 'var(--text)' }}>{formatHours(previewHrs.total)}</strong>
-              {' · '}<strong style={{ color: 'var(--green2)' }}>{formatYen(Math.round(previewEarn))}</strong>
-              {previewHrs.night > 0 && (
-                <span style={{ color: 'var(--info)', fontSize: 11 }}> (🌙 {formatHours(previewHrs.night)} night)</span>
-              )}
+              <div style={{ marginBottom: 4 }}>
+                Per shift: <strong style={{ color: 'var(--text)' }}>{formatHours(previewHrs.total)}</strong>
+                {' · '}<strong style={{ color: 'var(--green2)' }}>{formatYen(Math.round(previewEarn))}</strong>
+                {previewHrs.night > 0 && (
+                  <span style={{ color: 'var(--info)', fontSize: 11 }}> (🌙 {formatHours(previewHrs.night)} night)</span>
+                )}
+              </div>
+              <div style={{ borderTop: '1px solid var(--border)', marginTop: 6, paddingTop: 6, color: 'var(--text)' }}>
+                Total for <strong>{summary.willAdd}</strong> shift{summary.willAdd !== 1 ? 's' : ''}:
+                {' '}<strong>{formatHours(previewHrs.total * summary.willAdd)}</strong>
+                {' · '}<strong style={{ color: 'var(--green2)' }}>{formatYen(Math.round(previewEarn * summary.willAdd))}</strong>
+                {summary.willSkip > 0 && (
+                  <span style={{ marginLeft: 6, fontSize: 11 }}>
+                    · {summary.willSkip} skipped
+                  </span>
+                )}
+              </div>
             </>
           ) : (
             <>Pick a job or template to estimate earnings.</>
@@ -435,6 +455,135 @@ const L: React.CSSProperties = {
   color: 'var(--muted)', textTransform: 'uppercase',
   letterSpacing: '0.5px', marginBottom: 4,
 }
+
+/**
+ * Custom dropdown used in place of native <select>, whose popup cannot be
+ * styled cross-browser. <option> children render with the OS palette
+ * (white-on-white in Windows light mode / Chromium dark mode combos), so we
+ * build a fully-styled React menu instead.
+ */
+function Dropdown<T extends { id: string; label: string }>({
+  items,
+  value,
+  onChange,
+  placeholder = '— select —',
+}: {
+  items: T[]
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+}) {
+  const [open, setOpen] = useState(false)
+  const wrapRef = useRef<HTMLDivElement | null>(null)
+
+  // Close on outside click
+  useEffect(() => {
+    if (!open) return
+    const onDocClick = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [open])
+
+  // Close on Escape
+  useEffect(() => {
+    if (!open) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [open])
+
+  const current = items.find((it) => it.id === value)
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        style={ddControlStyle(open)}
+      >
+        <span style={{ flex: 1, textAlign: 'left', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {current ? current.label : <span style={{ color: 'var(--muted)' }}>{placeholder}</span>}
+        </span>
+        <span style={{ marginLeft: 8, fontSize: 10, opacity: 0.7, transform: open ? 'rotate(180deg)' : 'none', transition: 'transform 150ms ease' }}>▾</span>
+      </button>
+
+      {open && (
+        <div style={ddMenuStyle}>
+          {items.length === 0 ? (
+            <div style={{ padding: '10px 12px', color: 'var(--muted)', fontSize: 13 }}>No options</div>
+          ) : (
+            items.map((it) => {
+              const selected = it.id === value
+              return (
+                <button
+                  key={it.id}
+                  type="button"
+                  onClick={() => { onChange(it.id); setOpen(false) }}
+                  style={ddItemStyle(selected)}
+                  onMouseEnter={(e) => { (e.currentTarget as HTMLButtonElement).style.background = 'rgba(59,130,246,0.18)' }}
+                  onMouseLeave={(e) => { (e.currentTarget as HTMLButtonElement).style.background = selected ? 'rgba(59,130,246,0.22)' : 'transparent' }}
+                >
+                  {it.label}
+                </button>
+              )
+            })
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
+const ddControlStyle = (open: boolean): React.CSSProperties => ({
+  width: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  background: 'rgba(255,255,255,0.05)',
+  border: `1px solid ${open ? 'var(--accent)' : 'var(--border)'}`,
+  color: 'var(--text)',
+  padding: '10px 12px',
+  borderRadius: 8,
+  fontFamily: 'inherit',
+  fontSize: 14,
+  cursor: 'pointer',
+  outline: 'none',
+  boxShadow: open ? '0 0 0 3px rgba(59,130,246,0.12)' : 'none',
+  transition: 'border-color 150ms ease, box-shadow 150ms ease',
+})
+
+const ddMenuStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 'calc(100% + 4px)',
+  left: 0,
+  right: 0,
+  zIndex: 10,
+  maxHeight: 240,
+  overflowY: 'auto',
+  background: 'var(--surface)',
+  border: '1px solid var(--border)',
+  borderRadius: 8,
+  boxShadow: '0 8px 24px rgba(0,0,0,0.35)',
+  padding: 4,
+  display: 'flex',
+  flexDirection: 'column',
+}
+
+const ddItemStyle = (selected: boolean): React.CSSProperties => ({
+  background: selected ? 'rgba(59,130,246,0.22)' : 'transparent',
+  border: 'none',
+  color: 'var(--text)',
+  padding: '8px 10px',
+  borderRadius: 6,
+  fontSize: 13,
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontWeight: selected ? 600 : 400,
+})
 
 function SourceBtn({ active, onClick, label }: { active: boolean; onClick: () => void; label: string }) {
   return (
