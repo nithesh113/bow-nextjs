@@ -20,6 +20,7 @@ refimages/
 .env.development.local
 .env.test.local
 .env.production.local
+scripts/.migration.env
 
 # Debug
 npm-debug.log*
