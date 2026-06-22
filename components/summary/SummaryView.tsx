@@ -189,382 +189,305 @@ export default function SummaryView({ user }: SummaryViewProps) {
     }
   }, [curY, curM, jobs])
 
+  // Visa audit color (used on multiple subsections — derive once)
+  const visaColor =
+    weeklyVisaAudit.monthSafetyStatus === 'violating' ? 'var(--red)'
+    : weeklyVisaAudit.monthSafetyStatus === 'caution'   ? 'var(--yellow)'
+    : 'var(--success)'
+
+  // Card layout — match Calendar's compact strip aesthetic
   return (
     <div style={{
-      padding: '16px 12px 120px 12px',
+      padding: '12px 12px 120px 12px',
       maxWidth: 600,
       margin: '0 auto',
       display: 'flex',
       flexDirection: 'column',
-      gap: 16,
+      gap: 14,
       animation: 'slideUp 0.35s cubic-bezier(0.16, 1, 0.3, 1)'
     }}>
 
-      {/* ── Active Month Overview Tab Header ────────────────── */}
+      {/* ── Header ─────────────────────────── */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 4px' }}>
-        <h2 style={{ fontSize: 18, fontWeight: 800, fontFamily: 'var(--display)', color: '#fff', letterSpacing: '-0.01em' }}>
-          {MONTH_NAMES[curM]} {curY} Analytics
+        <h2 style={{ fontSize: 18, fontWeight: 800, color: '#fff', letterSpacing: '-0.01em' }}>
+          {MONTH_NAMES[curM]} {curY}
         </h2>
-        <span style={{
-          fontSize: 9,
-          background: 'rgba(59,130,246,0.1)',
-          border: '1px solid rgba(59,130,246,0.2)',
-          padding: '4px 10px',
-          borderRadius: 20,
-          color: 'var(--info)',
-          fontWeight: 700,
-          textTransform: 'uppercase',
-          letterSpacing: '0.04em'
-        }}>
-          🗄️ Neon DB Sync
+        <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Summary
         </span>
       </div>
 
-      {/* ── 1. Visa Hours Compliance Audit Card ────────────────── */}
-      <div style={{
-        background: 'var(--card)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        borderLeft: `4px solid ${weeklyVisaAudit.monthSafetyStatus === 'violating'
-            ? 'var(--red)'
-            : weeklyVisaAudit.monthSafetyStatus === 'caution'
-              ? 'var(--yellow)'
+      {/* ── Section helper ─────────────────── */}
+      <Section emoji="🛡️" label="Visa" sublabel={`Limit ${CONFIG.WEEKLY_HOUR_LIMIT}h/wk`}>
+        <Strip>
+          <Stat label="Hours" value={formatHours(activeMonthStats.hours)} />
+          <Stat label="Peak Wk" value={formatHours(weeklyVisaAudit.maxWeekHours)} unit={`/${CONFIG.WEEKLY_HOUR_LIMIT}h`} valueColor={visaColor} />
+          <Stat
+            label="Status"
+            value={
+              weeklyVisaAudit.monthSafetyStatus === 'safe' ? '✓ Safe'
+              : weeklyVisaAudit.monthSafetyStatus === 'caution' ? '⚡ Caution'
+              : '⚠ Over'
+            }
+            valueColor={visaColor}
+          />
+        </Strip>
+
+        {/* Compact week rows */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginTop: 8 }}>
+          {weeklyVisaAudit.weeks.map(w => {
+            const dotColor =
+              w.status === 'danger' ? 'var(--red)'
+              : w.status === 'warning' ? 'var(--yellow)'
               : 'var(--success)'
-          }`,
-        padding: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>🛡️</span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              Visa Compliance Audit
-            </span>
-          </div>
-          {weeklyVisaAudit.monthSafetyStatus === 'safe' && (
-            <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(16,185,129,0.1)', color: 'var(--success)', border: '1px solid rgba(16,185,129,0.25)', padding: '2px 8px', borderRadius: 12 }}>
-              COMPLIANT
-            </span>
-          )}
-          {weeklyVisaAudit.monthSafetyStatus === 'caution' && (
-            <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(245,158,11,0.1)', color: 'var(--yellow)', border: '1px solid rgba(245,158,11,0.25)', padding: '2px 8px', borderRadius: 12 }}>
-              CAUTION
-            </span>
-          )}
-          {weeklyVisaAudit.monthSafetyStatus === 'violating' && (
-            <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(239,68,68,0.1)', color: 'var(--red)', border: '1px solid rgba(239,68,68,0.25)', padding: '2px 8px', borderRadius: 12 }}>
-              OVER LIMIT
-            </span>
-          )}
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 14 }}>
-          <div style={{
-            flex: '1 1 120px',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.04)',
-            borderRadius: 12,
-            padding: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2, fontWeight: 500 }}>Month Hours</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>{formatHours(activeMonthStats.hours)}</span>
-          </div>
-          <div style={{
-            flex: '1 1 120px',
-            background: 'rgba(255,255,255,0.02)',
-            border: '1px solid rgba(255,255,255,0.04)',
-            borderRadius: 12,
-            padding: 10,
-            display: 'flex',
-            flexDirection: 'column',
-            justifyContent: 'center'
-          }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2, fontWeight: 500 }}>Peak Week</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: weeklyVisaAudit.monthSafetyStatus === 'violating' ? 'var(--red)' : weeklyVisaAudit.monthSafetyStatus === 'caution' ? 'var(--yellow)' : 'var(--accent)' }}>
-              {formatHours(weeklyVisaAudit.maxWeekHours)} <span style={{ fontSize: 10, fontWeight: 500, color: 'var(--muted)' }}>/ 28h</span>
-            </span>
-          </div>
-        </div>
-
-        {/* Responsive horizontal or vertical week list */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {weeklyVisaAudit.weeks.map(w => (
-            <div key={w.weekNum} style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              padding: '8px 10px',
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.01)',
-              border: '1px solid rgba(255,255,255,0.02)'
-            }}>
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>Week {w.weekNum}</span>
-                <span style={{ fontSize: 9, color: 'var(--muted)', marginTop: 1 }}>{w.weekStart} – {w.weekEnd}</span>
+            return (
+              <div key={w.weekNum} style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '5px 8px', borderRadius: 6,
+                background: 'rgba(255,255,255,0.02)',
+                border: '1px solid rgba(255,255,255,0.04)',
+              }}>
+                <span style={{ fontSize: 10, color: 'var(--text-secondary)', fontWeight: 600 }}>
+                  W{w.weekNum} <span style={{ color: 'var(--muted)', fontWeight: 500 }}>· {w.weekStart}–{w.weekEnd}</span>
+                </span>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, fontFamily: 'monospace', color: 'var(--text-secondary)' }}>{formatHours(w.hours)}</span>
+                  <span style={{
+                    fontSize: 9, fontWeight: 700,
+                    padding: '2px 6px', borderRadius: 8,
+                    background: `${dotColor.replace(')', ', 0.08)')}55`,
+                    color: dotColor,
+                  }}>
+                    {w.status === 'danger' ? 'OVER' : w.status === 'warning' ? 'NEAR' : 'OK'}
+                  </span>
+                </span>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, fontFamily: 'monospace' }}>{formatHours(w.hours)}</span>
-                <div style={{
-                  width: 8, height: 8, borderRadius: '50%',
-                  background: w.status === 'danger' ? 'var(--red)' : w.status === 'warning' ? 'var(--yellow)' : 'var(--success)',
-                  boxShadow: `0 0 8px ${w.status === 'danger' ? 'var(--red)' : w.status === 'warning' ? 'var(--yellow)' : 'var(--success)'}`
-                }} />
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
-      </div>
+      </Section>
 
-      {/* ── 2. Current Month Cash Flow & Savings Rate Card ──────── */}
-      <div style={{
-        background: 'var(--card)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        borderLeft: `4px solid ${activeMonthStats.netSavings >= 0 ? 'var(--success)' : 'var(--red)'}`,
-        padding: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 16 }}>💰</span>
-          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Cash Flow & Savings Rate
-          </span>
-        </div>
+      {/* ── Cash flow + savings ────────────── */}
+      <Section emoji="💰" label="Cash flow" sublabel={`${MONTH_NAMES[curM]} this month`}>
+        <Strip>
+          <Stat label="Earned" value={formatYen(activeMonthStats.earned)} valueColor="var(--green2)" />
+          <Stat label="Spent" value={formatYen(totalMonthExpenses)} valueColor="var(--accent2)" />
+          <Stat
+            label="Net"
+            value={(activeMonthStats.netSavings >= 0 ? '+' : '') + formatYen(activeMonthStats.netSavings)}
+            valueColor={activeMonthStats.netSavings >= 0 ? 'var(--info)' : 'var(--red)'}
+          />
+        </Strip>
 
-        {/* Responsive flex wrapping for cash flow widgets */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
-          {[
-            { label: 'Earnings', value: formatYen(activeMonthStats.earned), color: 'var(--green2)', bg: 'rgba(34,197,94,0.03)', border: 'rgba(34,197,94,0.1)' },
-            { label: 'Expenses', value: formatYen(totalMonthExpenses), color: 'var(--accent2)', bg: 'rgba(239,68,68,0.03)', border: 'rgba(239,68,68,0.1)' },
-            { label: 'Net Savings', value: (activeMonthStats.netSavings >= 0 ? '+' : '') + formatYen(activeMonthStats.netSavings), color: activeMonthStats.netSavings >= 0 ? 'var(--info)' : 'var(--red)', bg: 'rgba(14,165,233,0.03)', border: 'rgba(14,165,233,0.1)' }
-          ].map((item, idx) => (
-            <div key={idx} style={{
-              flex: '1 1 120px',
-              background: item.bg,
-              border: `1px solid ${item.border}`,
-              borderRadius: 12,
-              padding: '10px 8px',
-              textAlign: 'center',
-              display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'center',
-              minWidth: 100
-            }}>
-              <span style={{ fontSize: 9, color: 'var(--muted)', marginBottom: 3, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.02em' }}>{item.label}</span>
-              <span style={{ fontSize: 14, fontWeight: 800, color: item.color }}>{item.value}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Savings Rate progress indicator */}
-        <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.02)', borderRadius: 12, padding: 12 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11, marginBottom: 6 }}>
-            <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>Month Savings Rate</span>
-            <span style={{ fontWeight: 800, color: activeMonthStats.savingsRate >= 0 ? 'var(--success)' : 'var(--red)', fontSize: 12 }}>
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>
+            <span>Savings rate</span>
+            <span style={{ fontWeight: 700, color: activeMonthStats.savingsRate >= 0 ? 'var(--success)' : 'var(--red)' }}>
               {activeMonthStats.savingsRate}%
             </span>
           </div>
-          <ProgressBar value={Math.max(0, activeMonthStats.savingsRate)} color={activeMonthStats.savingsRate >= 0 ? 'var(--success)' : 'var(--red)'} height={8} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4, fontSize: 9, color: 'var(--muted)', fontWeight: 500 }}>
-            <span>0% (Neutral)</span>
-            <span>Target: High Savings</span>
-          </div>
+          <ProgressBar
+            value={Math.max(0, activeMonthStats.savingsRate)}
+            color={activeMonthStats.savingsRate >= 0 ? 'var(--success)' : 'var(--red)'}
+            height={6}
+          />
         </div>
-      </div>
+      </Section>
 
-      {/* ── 3. Night-Pay Optimization Card ─────────────────────── */}
-      <div style={{
-        background: 'var(--card)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        borderLeft: '4px solid var(--yellow)',
-        padding: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
-          <span style={{ fontSize: 16 }}>🌙</span>
-          <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Night Pay & Premium Optimization
-          </span>
+      {/* ── Night pay ──────────────────────── */}
+      <Section emoji="🌙" label="Night premium" sublabel="22:00–05:00 differential">
+        <Strip>
+          <Stat
+            label="Night hrs"
+            value={formatHours(activeMonthStats.nightHours)}
+            sub={activeMonthStats.hours > 0
+              ? `${Math.round((activeMonthStats.nightHours / activeMonthStats.hours) * 100)}% of total`
+              : '—'}
+          />
+          <Stat
+            label="Bonus"
+            value={`+${formatYen(activeMonthStats.nightPremiumEarned)}`}
+            valueColor="var(--yellow)"
+            sub="From night differential"
+          />
+        </Strip>
+      </Section>
+
+      {/* ── School fee ─────────────────────── */}
+      <Section emoji="🎓" label="School fee" sublabel={`Target ${formatYen(schoolFeeTarget)}`}>
+        <Strip>
+          <Stat label="Earned" value={formatYen(allTimeStats.totalEarned)} valueColor="var(--green2)" />
+          <Stat
+            label="Gap"
+            value={allTimeStats.feeGap > 0 ? formatYen(allTimeStats.feeGap) : '✓ Met'}
+            valueColor={allTimeStats.feeGap > 0 ? 'var(--warning)' : 'var(--success)'}
+          />
+          <Stat label="Avg/mo" value={formatYen(allTimeStats.avgPerMonth)} />
+        </Strip>
+
+        <div style={{ marginTop: 10 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--muted)', marginBottom: 4 }}>
+            <span>Progress</span>
+            <span style={{ fontWeight: 700, color: 'var(--info)' }}>{Math.round(allTimeStats.feePct)}%</span>
+          </div>
+          <ProgressBar value={allTimeStats.feePct} color="var(--info)" height={6} />
         </div>
+      </Section>
 
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>Premium Night Hours</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: '#fff' }}>
-              {formatHours(activeMonthStats.nightHours)}
-            </span>
-            <span style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>
-              {activeMonthStats.hours > 0 ? Math.round((activeMonthStats.nightHours / activeMonthStats.hours) * 100) : 0}% of your total workload
-            </span>
-          </div>
-          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>Night Premium Bonus</span>
-            <span style={{ fontSize: 16, fontWeight: 800, color: 'var(--yellow)' }}>
-              +{formatYen(activeMonthStats.nightPremiumEarned)}
-            </span>
-            <span style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2 }}>
-              Extra money earned from night differential pay
-            </span>
-          </div>
+      {/* ── Insights (single neutral card) ── */}
+      <Section emoji="✨" label="Insights" sublabel="This month">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 11, lineHeight: 1.5, color: 'var(--text-secondary)' }}>
+          <Insight icon="🛡️">
+            <strong style={{ color: '#fff' }}>Visa:</strong>{' '}
+            {weeklyVisaAudit.monthSafetyStatus === 'safe'
+              ? `${formatHours(activeMonthStats.hours)} this month looks compliant.`
+              : `Week ${weeklyVisaAudit.weeks.find(w => w.status !== 'compliant')?.weekNum} is close to or over the limit.`}
+          </Insight>
+          <Insight icon="📈">
+            <strong style={{ color: '#fff' }}>Goal:</strong> at{' '}
+            {formatYen(allTimeStats.avgPerMonth)}/mo you'll close the{' '}
+            {formatYen(allTimeStats.feeGap)} gap in{' '}
+            <strong style={{ color: 'var(--green2)' }}>
+              {allTimeStats.avgPerMonth > 0 ? (allTimeStats.feeGap / allTimeStats.avgPerMonth).toFixed(1) : '0.0'} months
+            </strong>.
+          </Insight>
+          <Insight icon="🌙">
+            <strong style={{ color: '#fff' }}>Night:</strong> shifting 2h after 22:00 ≈{' '}
+            <strong style={{ color: 'var(--yellow)' }}>+¥2,500</strong>/mo without extra hours.
+          </Insight>
         </div>
-      </div>
+      </Section>
 
-      {/* ── 4. Dynamic School Fee Progress Card ────────────────── */}
-      <div style={{
-        background: 'var(--card)',
-        borderRadius: 16,
-        border: '1px solid var(--border)',
-        borderLeft: '4px solid var(--info)',
-        padding: 16,
-        boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-      }}>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>🎓</span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              School Fee Goal Tracker
-            </span>
-          </div>
-          <span style={{
-            fontSize: 9,
-            fontWeight: 800,
-            color: 'var(--info)',
-            background: 'rgba(14,165,233,0.1)',
-            border: '1px solid rgba(14,165,233,0.25)',
-            padding: '2px 8px',
-            borderRadius: 12,
-            textTransform: 'uppercase',
-            letterSpacing: '0.02em'
-          }}>
-            {Math.round(allTimeStats.feePct)}% Met
-          </span>
-        </div>
-
-        <div style={{ background: 'rgba(255,255,255,0.01)', border: '1px solid rgba(255,255,255,0.02)', borderRadius: 12, padding: 12, marginBottom: 12 }}>
-          <ProgressBar value={allTimeStats.feePct} color="var(--info)" height={12} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 8, fontSize: 10, color: 'var(--muted)', fontWeight: 500 }}>
-            <span>Earned: <strong style={{ color: 'var(--green2)' }}>{formatYen(allTimeStats.totalEarned)}</strong></span>
-            <span>Target: <strong style={{ color: '#fff' }}>{formatYen(schoolFeeTarget)}</strong></span>
-          </div>
-        </div>
-
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2 }}>Remaining Target Gap</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: allTimeStats.feeGap > 0 ? 'var(--warning)' : 'var(--success)' }}>
-              {allTimeStats.feeGap > 0 ? formatYen(allTimeStats.feeGap) : '🎉 Tuition Fully Met!'}
-            </span>
-          </div>
-          <div style={{ flex: '1 1 120px', display: 'flex', flexDirection: 'column' }}>
-            <span style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 2 }}>Monthly Avg Earnings</span>
-            <span style={{ fontSize: 14, fontWeight: 800, color: '#fff' }}>{formatYen(allTimeStats.avgPerMonth)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 5. ✨ AI Financial & Visa Insights Card (Beta Preview) ── */}
-      <div style={{
-        background: 'linear-gradient(135deg, rgba(168,85,247,0.06) 0%, rgba(59,130,246,0.06) 100%)',
-        border: '1px solid rgba(168,85,247,0.25)',
-        borderLeft: '4px solid #a855f7',
-        borderRadius: 16,
-        padding: 16,
-        boxShadow: '0 4px 24px rgba(139,92,246,0.12)',
-        position: 'relative',
-        overflow: 'hidden'
-      }}>
-        <div style={{
-          position: 'absolute', top: -50, right: -50, width: 100, height: 100,
-          background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
-          pointerEvents: 'none'
-        }} />
-
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ fontSize: 16 }}>✨</span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#c084fc', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              AI Financial & Visa Insights
-            </span>
-          </div>
-          <span style={{ fontSize: 9, fontWeight: 800, background: 'rgba(192,132,252,0.15)', color: '#c084fc', border: '1px solid rgba(192,132,252,0.3)', padding: '2px 8px', borderRadius: 8, letterSpacing: '0.03em' }}>
-            BETA PREVIEW
-          </span>
-        </div>
-
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, fontSize: 11, lineHeight: 1.5 }}>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 13, display: 'inline-block', minWidth: 16, textAlign: 'center' }}>🛡️</span>
-            <div>
-              <strong style={{ color: '#fff', fontWeight: 700 }}>Visa Safety Analysis:</strong>{' '}
-              <span style={{ color: 'var(--text-secondary)' }}>
-                Your current schedule ({formatHours(activeMonthStats.hours)} this month) is compliant.
-                {weeklyVisaAudit.monthSafetyStatus === 'safe'
-                  ? ' Safety margins look healthy, with an average weekly workload of ' + formatHours(activeMonthStats.hours / 4) + '.'
-                  : ' Caution: Week ' + weeklyVisaAudit.weeks.find(w => w.status !== 'compliant')?.weekNum + ' is close to or over the limit. Adjust your schedule.'}
-              </span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 13, display: 'inline-block', minWidth: 16, textAlign: 'center' }}>📈</span>
-            <div>
-              <strong style={{ color: '#fff', fontWeight: 700 }}>Goal Target Forecast:</strong>{' '}
-              <span style={{ color: 'var(--text-secondary)' }}>
-                At your average monthly earnings rate ({formatYen(allTimeStats.avgPerMonth)}/mo), you will bridge your remaining school fee gap of{' '}
-                {formatYen(allTimeStats.feeGap)} in{' '}
-                <span style={{ color: 'var(--green2)', fontWeight: 800 }}>
-                  {allTimeStats.avgPerMonth > 0 ? (allTimeStats.feeGap / allTimeStats.avgPerMonth).toFixed(1) : '0.0'} months
-                </span>.
-              </span>
-            </div>
-          </div>
-
-          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
-            <span style={{ fontSize: 13, display: 'inline-block', minWidth: 16, textAlign: 'center' }}>🌙</span>
-            <div>
-              <strong style={{ color: '#fff', fontWeight: 700 }}>Night Premium Opportunity:</strong>{' '}
-              <span style={{ color: 'var(--text-secondary)' }}>
-                Shift 2 hours of your weekly McDonald's shifts after 22:00 to boost your monthly income by approximately{' '}
-                <span style={{ color: 'var(--yellow)', fontWeight: 800 }}>+¥2,500</span> without increasing your work hours.
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* ── 6. Month-by-Month Historical Breakdown ─────────────── */}
+      {/* ── Monthly history ────────────────── */}
       {allTimeStats.perMonth.length > 0 && (
-        <div style={{
-          background: 'var(--card)',
-          borderRadius: 16,
-          border: '1px solid var(--border)',
-          padding: 16,
-          boxShadow: '0 4px 20px rgba(0,0,0,0.15)'
-        }}>
-          <div style={{ fontSize: 11, fontWeight: 800, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-            Monthly Earnings breakdown
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <Section emoji="📅" label="History" sublabel="All-time earnings">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {allTimeStats.perMonth.map(pm => {
               const [y, mo] = pm.key.split('-').map(Number)
               const pct = Math.min(100, (pm.earned / (allTimeStats.avgPerMonth || 1)) * 100)
               return (
-                <div key={pm.key} style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11 }}>
-                    <span style={{ color: 'var(--text-secondary)', fontWeight: 500 }}>{MONTH_NAMES[mo - 1]} {y}</span>
+                <div key={pm.key}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, marginBottom: 2 }}>
+                    <span style={{ color: 'var(--text-secondary)', fontWeight: 600 }}>
+                      {MONTH_NAMES[mo - 1].slice(0, 3)} {y}
+                    </span>
                     <span style={{ color: 'var(--green2)', fontWeight: 700 }}>{formatYen(pm.earned)}</span>
                   </div>
-                  <ProgressBar value={pct} color="var(--accent)" height={4} />
+                  <div style={{ height: 4, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%',
+                      width: `${pct}%`,
+                      background: 'var(--accent)',
+                      borderRadius: 2,
+                      transition: 'width 300ms ease',
+                    }} />
+                  </div>
                 </div>
               )
             })}
           </div>
-        </div>
+        </Section>
       )}
     </div>
   )
 }
+
+/* ── Sub-components (visual-only) ────────────── */
+
+function Section({
+  emoji, label, sublabel, children,
+}: {
+  emoji: string
+  label: string
+  sublabel?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div style={{
+      background: 'var(--card)',
+      borderRadius: 10,
+      border: '1px solid var(--border)',
+      padding: '10px 10px 12px 10px',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        marginBottom: 10,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{ fontSize: 13 }}>{emoji}</span>
+          <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-secondary)' }}>{label}</span>
+        </div>
+        {sublabel && (
+          <span style={{ fontSize: 9, color: 'var(--muted)', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 600 }}>
+            {sublabel}
+          </span>
+        )}
+      </div>
+      {children}
+    </div>
+  )
+}
+
+function Strip({ children }: { children: React.ReactNode }) {
+  return (
+    <div style={{
+      display: 'grid',
+      gridTemplateColumns: `repeat(${React.Children.count(children)}, 1fr)`,
+      gap: 6,
+    }}>
+      {children}
+    </div>
+  )
+}
+
+function Stat({
+  label, value, unit, valueColor, sub,
+}: {
+  label: string
+  value: string
+  unit?: string
+  valueColor?: string
+  sub?: string
+}) {
+  return (
+    <div style={{
+      background: 'rgba(255,255,255,0.03)',
+      border: '1px solid rgba(255,255,255,0.05)',
+      borderRadius: 8,
+      padding: '8px 6px',
+      textAlign: 'center',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+    }}>
+      <div style={{ fontSize: 13, fontWeight: 800, color: valueColor || 'var(--accent)' }}>
+        {value}
+        {unit && <span style={{ fontSize: 9, color: 'var(--muted)', fontWeight: 600, marginLeft: 2 }}>{unit}</span>}
+      </div>
+      <div style={{ fontSize: 9, color: 'var(--muted)', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 600 }}>
+        {label}
+      </div>
+      {sub && (
+        <div style={{ fontSize: 9, color: 'var(--muted2)', marginTop: 2 }}>{sub}</div>
+      )}
+    </div>
+  )
+}
+
+function Insight({ icon, children }: { icon: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'flex-start' }}>
+      <span style={{
+        flexShrink: 0,
+        width: 18, height: 18,
+        display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: 12, borderRadius: 999,
+        background: 'rgba(255,255,255,0.04)',
+      }}>{icon}</span>
+      <div style={{ flex: 1 }}>{children}</div>
+    </div>
+  )
+}
+
+/* re-export React.Children: keep the React import local-only via JSX runtime */
+import React from 'react'
