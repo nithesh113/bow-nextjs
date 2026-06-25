@@ -99,7 +99,6 @@ export interface AppSettings {
 
 // ── UI State ────────────────────────────────────
 export type TopTab = 'calendar' | 'templates' | 'budget' | 'summary' | 'expenses' | 'account'
-export type BottomTab = 'transactions' | 'stats' | 'accounts' | 'more' | null
 
 export type ModalType =
   | 'day'

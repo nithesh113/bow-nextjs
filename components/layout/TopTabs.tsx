@@ -13,8 +13,7 @@ const TABS: { id: TopTab; label: string }[] = [
 ]
 
 export default function TopTabs() {
-  const { activeTab, activeBottomTab, setTab } = useAppStore()
-  const isActive = activeBottomTab === null
+  const { activeTab, setTab } = useAppStore()
 
   return (
     <nav style={{
@@ -27,7 +26,7 @@ export default function TopTabs() {
       zIndex: 99,
     }}>
       {TABS.map((tab) => {
-        const active = isActive && activeTab === tab.id
+        const active = activeTab === tab.id
         return (
           <button
             key={tab.id}

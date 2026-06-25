@@ -1,6 +1,6 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { TopTab, BottomTab, ModalType } from '@/types'
+import type { TopTab, ModalType } from '@/types'
 import { CONFIG, MIN_DATE, MAX_DATE } from '@/lib/constants'
 import { navigateMonth } from '@/lib/dateUtils'
 
@@ -9,7 +9,6 @@ interface AppState {
   curY: number
   curM: number
   activeTab: TopTab
-  activeBottomTab: BottomTab
   // Modal
   openModal: ModalType
   modalDateKey: string | null
@@ -19,7 +18,6 @@ interface AppState {
   perMinutePay: boolean
   // Actions
   setTab: (tab: TopTab) => void
-  setBottomTab: (tab: BottomTab | null) => void
   changeMonth: (delta: number) => void
   goToday: () => void
   setModal: (modal: ModalType, dateKey?: string) => void
@@ -36,14 +34,12 @@ export const useAppStore = create<AppState>()(
       curY: new Date().getFullYear(),
       curM: new Date().getMonth(),
       activeTab: 'calendar',
-      activeBottomTab: null,
       openModal: null,
       modalDateKey: null,
       fabExpanded: false,
       perMinutePay: false,
 
-      setTab: (tab) => set({ activeTab: tab, activeBottomTab: null }),
-      setBottomTab: (tab) => set({ activeBottomTab: tab }),
+      setTab: (tab) => set({ activeTab: tab }),
 
       changeMonth: (delta) => {
         const { curY, curM } = get()

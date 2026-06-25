@@ -5,15 +5,12 @@ import { useAppStore } from '@/store/useAppStore'
 import { startExpensesInvalidationListeners } from '@/store/useExpensesStore'
 import Topbar from './Topbar'
 import TopTabs from './TopTabs'
-import BottomNav from './BottomNav'
 import CalendarView from '@/components/calendar/CalendarView'
 import TemplatesView from '@/components/templates/TemplatesView'
 import BudgetView from '@/components/budget/BudgetView'
 import SummaryView from '@/components/summary/SummaryView'
 import ExpenseView from '@/components/expenses/ExpenseView'
-import SettingsView from '@/components/settings/SettingsView'
 import AccountView from '@/components/account/AccountView'
-import TransactionsView from '@/components/transactions/TransactionsView'
 import DayModal from '@/components/modals/DayModal'
 import JobManagerModal from '@/components/modals/JobManagerModal'
 import VisaWarningModal from '@/components/modals/VisaWarningModal'
@@ -29,7 +26,7 @@ import { useShiftsStore } from '@/store/useShiftsStore'
 import { AuthUser } from '@/lib/auth/session'
 
 export default function AppShell({ user }: { user: AuthUser }) {
-  const { activeTab, activeBottomTab, openModal, fabExpanded } = useAppStore()
+  const { activeTab, openModal, fabExpanded } = useAppStore()
   const { syncShiftsFromDB } = useShiftsStore()
 
   // Single boot: hook up focus/visibility/event listeners that bust
@@ -40,40 +37,19 @@ export default function AppShell({ user }: { user: AuthUser }) {
   }, [syncShiftsFromDB])
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(140px + env(safe-area-inset-bottom, 0px))' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>
 
       {/* ── Header ─────────────────────────── */}
       <Topbar userName={user.name} />
       <TopTabs />
 
       {/* ── Main Tab Content ───────────────── */}
-      {activeBottomTab === null && (
-        <>
-          {activeTab === 'calendar'  && <CalendarView />}
-          {activeTab === 'templates' && <TemplatesView />}
-          {activeTab === 'budget'    && <BudgetView />}
-          {activeTab === 'expenses'  && <ExpenseView />}
-          {activeTab === 'summary'   && <SummaryView user={user} />}
-          {activeTab === 'account'   && <AccountView user={user} />}
-        </>
-      )}
-
-      {/* ── Bottom Tab Panels ──────────────── */}
-      {activeBottomTab === 'transactions' && <TransactionsView />}
-      {activeBottomTab === 'stats' && (
-        <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)' }}>
-          📊 Stats coming soon…
-        </div>
-      )}
-      {activeBottomTab === 'accounts' && (
-        <div style={{ padding: '32px 16px', textAlign: 'center', color: 'var(--muted)' }}>
-          🏦 Accounts coming soon…
-        </div>
-      )}
-      {activeBottomTab === 'more' && <SettingsView />}
-
-      {/* ── Bottom Navigation ──────────────── */}
-      <BottomNav />
+      {activeTab === 'calendar'  && <CalendarView />}
+      {activeTab === 'templates' && <TemplatesView />}
+      {activeTab === 'budget'    && <BudgetView />}
+      {activeTab === 'expenses'  && <ExpenseView />}
+      {activeTab === 'summary'   && <SummaryView user={user} />}
+      {activeTab === 'account'   && <AccountView user={user} />}
 
       {/* ── FAB System ─────────────────────── */}
       {fabExpanded && <FABMenu />}

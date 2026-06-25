@@ -1,10 +1,12 @@
 'use client'
 
 import { useState, useEffect, useCallback, useTransition } from 'react'
+import { Settings } from 'lucide-react'
 import { AuthUser } from '@/lib/auth/session'
 import { updateAccount, resendVerificationEmailAction } from '@/app/actions/account'
 import { useRouter } from 'next/navigation'
 import { toast } from 'sonner'
+import SettingsView from '@/components/settings/SettingsView'
 
 const CURRENCIES = [
   { value: 'JPY', label: 'JPY', symbol: '¥', flag: '🇯🇵' },
@@ -48,6 +50,7 @@ export default function AccountView({ user }: { user: AuthUser }) {
   const [currency, setCurrency] = useState(user.currency || 'JPY')
   const [location, setLocation] = useState(user.location || 'Japan')
   const [schoolFee, setSchoolFee] = useState<number | ''>(user.schoolFee ?? 840000)
+  const [showSettings, setShowSettings] = useState(false)
 
   // Reset drafts if user prop changes
   useEffect(() => { setName(user.name) }, [user.name])
@@ -139,6 +142,32 @@ export default function AccountView({ user }: { user: AuthUser }) {
             <span>{isVerified ? 'Verified' : 'Not Verified'}</span>
           </div>
         </div>
+
+        {/* ⚙️ Settings toggle — opens the "More" page inline below */}
+        <button
+          type="button"
+          onClick={() => setShowSettings((v) => !v)}
+          aria-label={showSettings ? 'Hide settings' : 'Open settings'}
+          aria-expanded={showSettings}
+          title="Settings"
+          style={{
+            flexShrink: 0,
+            width: 38, height: 38, borderRadius: '50%',
+            background: showSettings
+              ? 'linear-gradient(135deg, #6366f1 0%, #3b82f6 100%)'
+              : 'rgba(255,255,255,0.05)',
+            border: showSettings
+              ? '1px solid rgba(99,102,241,0.45)'
+              : '1px solid var(--border)',
+            color: showSettings ? '#fff' : 'var(--muted)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: showSettings ? '0 4px 16px rgba(99,102,241,0.35)' : 'none',
+            transition: 'all 0.2s ease',
+          }}
+        >
+          <Settings size={18} strokeWidth={2.2} />
+        </button>
       </div>
 
       {/* ── Verification Banner (unverified only) ── */}
@@ -283,6 +312,26 @@ export default function AccountView({ user }: { user: AuthUser }) {
           {isPending ? '⏳  Saving…' : '💾  Save Changes'}
         </button>
       </form>
+
+      {/* ── Settings (More page) — reveal via ⚙️ icon ── */}
+      {showSettings && (
+        <div
+          role="region"
+          aria-label="Settings"
+          style={{ padding: '20px 0 4px', animation: 'slideUp 0.25s ease' }}
+        >
+          <div style={{
+            margin: '0 16px 10px',
+            display: 'flex', alignItems: 'center', gap: 8,
+            fontSize: 11, fontWeight: 700, color: 'var(--muted)',
+            textTransform: 'uppercase', letterSpacing: '0.06em',
+          }}>
+            <Settings size={14} strokeWidth={2.4} />
+            <span>Settings</span>
+          </div>
+          <SettingsView />
+        </div>
+      )}
     </div>
   )
 }
