@@ -90,3 +90,45 @@ export function recalculateDayTotals(
 
   return totals
 }
+
+/**
+ * Required break minutes under Japan Labor Standards Act Art. 34.
+ *   ≥ 8h worked → 60 min
+ *   ≥ 6h worked → 45 min
+ *   otherwise   → 0
+ *
+ * Pass either scheduled hours (`calcScheduledHours(s).total`) or actual
+ * hours (`calcShiftHours(s).total`); both are decimal hours.
+ */
+export function requiredBreakMins(workedHrs: number): number {
+  if (workedHrs >= 8) return 60
+  if (workedHrs >= 6) return 45
+  return 0
+}
+
+/**
+ * Compute a sensible default break window inside [start..end] for the given
+ * required-break length. Centers the break at the shift midpoint. Returns
+ * `null` if the window is too short to fit the requested break.
+ *
+ * Handles overnight windows (end <= start ⇒ crosses midnight).
+ */
+export function defaultBreakWindow(
+  startHHMM: string,
+  endHHMM: string,
+  mins: number
+): { start: string; end: string } | null {
+  const sm = timeToMins(startHHMM)
+  let em = timeToMins(endHHMM)
+  if (em <= sm) em += 24 * 60
+  const total = em - sm
+  if (total < mins) return null
+  const mid = Math.floor((sm + em) / 2)
+  const bs = mid - Math.floor(mins / 2)
+  const be = bs + mins
+  const norm = (m: number) => {
+    const x = m % (24 * 60)
+    return `${String(Math.floor(x / 60)).padStart(2, '0')}:${String(x % 60).padStart(2, '0')}`
+  }
+  return { start: norm(bs), end: norm(be) }
+}
