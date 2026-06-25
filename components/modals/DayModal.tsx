@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Modal, { btnPrimary, btnSecondary } from '@/components/ui/Modal'
 import { useAppStore } from '@/store/useAppStore'
 import { useJobsStore } from '@/store/useJobsStore'
@@ -9,30 +9,61 @@ import { useTemplatesStore } from '@/store/useTemplatesStore'
 import { formatDayTitle, getWeekStart, weekDays, dateKey } from '@/lib/dateUtils'
 import { getDayHours, getNightHours } from '@/services/storage'
 import { formatHours, formatYen, timeToMins, minsToTime, nowTime } from '@/lib/timeUtils'
-import { calcShiftHours, calcShiftEarned } from '@/lib/nightPayEngine'
+import { calcShiftHours, calcShiftEarned, requiredBreakMins, defaultBreakWindow } from '@/lib/nightPayEngine'
 import { CONFIG } from '@/lib/constants'
 import type { Shift, Break } from '@/types'
 import DayShiftsList from './DayShiftsList'
 import DayTimeline from './DayTimeline'
 
+/**
+ * The "Add New Shift" form is reused as an *edit-existing* form when a single
+ * shift already exists for the day. Editing it calls `updateShift`, which
+ * rewrites the existing entry in place (instead of appending a duplicate).
+ *
+ * When more than one shift is logged (rare), the form is locked into "add
+ * another" mode so the user can never accidentally overwrite the wrong row.
+ */
+type FormMode = 'add' | 'edit'
+
 export default function DayModal() {
   const { modalDateKey: dk, closeModal, setModal, perMinutePay } = useAppStore()
   const { jobs } = useJobsStore()
-  const { shifts, addShift, deleteShift: deleteShiftStore, recalculateDayHours } = useShiftsStore()
+  const { shifts, addShift, updateShift, deleteShift: deleteShiftStore, updateActualTimes, recalculateDayHours } = useShiftsStore()
   const { templates } = useTemplatesStore()
 
   const dayShifts = dk ? (shifts[dk] || []) : []
 
-  // Form state
-  const [jobId, setJobId]     = useState(jobs[0]?.id || '')
-  const [start, setStart]     = useState('09:00')
-  const [end, setEnd]         = useState('17:00')
-  const [breakRows, setBreakRows] = useState<Break[]>([])
-  const [actualLogin, setActualLogin]   = useState('')
-  const [actualLogout, setActualLogout] = useState('')
-  const [actualBreaks, setActualBreaks] = useState<Break[]>([])
-  const [showActualBreaks, setShowActualBreaks] = useState(false)
+  // Existing-shift edit target. We only auto-edit a single shift; with 2+ we
+  // leave the form in "add" mode so the user adds a third shift explicitly.
+  const editingIndex = dayShifts.length === 1 ? 0 : -1
+  const editingShift = editingIndex >= 0 ? dayShifts[editingIndex] : null
+  const formMode: FormMode = editingShift ? 'edit' : 'add'
+
+  // Form state — pre-filled with the existing shift's times when editing so
+  // the visible times match the actual logged shift (the previous 09:00/17:00
+  // defaults conflated "the form is empty" with "the shift is 09–17", which
+  // made the calendar look like it was showing the wrong times).
+  const [jobId, setJobId]     = useState(editingShift?.jobId    ?? jobs[0]?.id ?? '')
+  const [start, setStart]     = useState(editingShift?.start    ?? '09:00')
+  const [end, setEnd]         = useState(editingShift?.end      ?? '17:00')
+  const [breakRows, setBreakRows] = useState<Break[]>(editingShift?.breaks ?? [])
   const [selectedTmpl, setSelectedTmpl] = useState('')
+
+  // When the modal closes & re-opens for a different date, the useState
+  // initializers above only fire on first mount — the modal stays mounted in
+  // the AppShell. Re-sync the form whenever the date shifts so a previous
+  // shift's times don't bleed into a fresh empty date (or vice versa).
+  useEffect(() => {
+    if (!dk) return
+    const next = shifts[dk] || []
+    const single = next.length === 1 ? next[0] : null
+    setJobId(single?.jobId   ?? jobs[0]?.id ?? '')
+    setStart(single?.start   ?? '09:00')
+    setEnd  (single?.end     ?? '17:00')
+    setBreakRows(single?.breaks ?? [])
+    setSelectedTmpl('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dk])
 
   if (!dk) return null
 
@@ -63,6 +94,19 @@ export default function DayModal() {
   const job = jobs.find(j => j.id === jobId)
   const previewEarned = job ? calcShiftEarned(previewShift, job) : 0
 
+  // Japan-law break prompt: only when per-minute pay is on AND scheduled hours
+  // cross the 6h threshold. Updates live as the user edits start/end.
+  const requiredMins = perMinutePay && previewHrs.total >= 6
+    ? requiredBreakMins(previewHrs.total)
+    : 0
+  const totalBreakMins = breakRows.reduce((acc, b) => {
+    let s = timeToMins(b.start)
+    let e = timeToMins(b.end)
+    if (e <= s) e += 24 * 60
+    return acc + (e - s)
+  }, 0)
+  const missingBreakMins = Math.max(0, requiredMins - totalBreakMins)
+
   const handleTmplChange = (tmplId: string) => {
     setSelectedTmpl(tmplId)
     const t = templates.find(t => t.id === tmplId)
@@ -71,6 +115,12 @@ export default function DayModal() {
     setStart(t.start)
     setEnd(t.end)
     setBreakRows([])
+  }
+
+  const handleInsertDefaultBreak = () => {
+    const win = defaultBreakWindow(start, end, requiredMins)
+    if (!win) return
+    setBreakRows((rows) => [...rows, { start: win.start, end: win.end }])
   }
 
   const handleSave = () => {
@@ -82,25 +132,27 @@ export default function DayModal() {
       return
     }
 
-    const shift: Shift = {
-      jobId, start, end, breaks: breakRows,
-      ...(perMinutePay && actualLogin && actualLogout ? {
-        actualLogin, actualLogout,
-        ...(showActualBreaks ? { actualBreaks } : {}),
-      } : {}),
+    const shift: Shift = { jobId, start, end, breaks: breakRows }
+    if (formMode === 'edit' && editingIndex >= 0) {
+      // Preserve the server-side id so future actual-time edits still target
+      // the right DB row.
+      void updateShift(dk, editingIndex, { ...editingShift, ...shift } as Shift)
+    } else {
+      void addShift(dk, shift)
     }
-    addShift(dk, shift)
     recalculateDayHours(dk)
     // Reset form
     setBreakRows([])
-    setActualLogin('')
-    setActualLogout('')
-    setActualBreaks([])
     setSelectedTmpl('')
   }
 
   const handleDeleteShift = (index: number) => {
     deleteShiftStore(dk, index)
+    recalculateDayHours(dk)
+  }
+
+  const handleUpdateActual = async (index: number, login: string, logout: string, breaks?: Break[]) => {
+    await updateActualTimes(dk, index, login, logout, breaks)
     recalculateDayHours(dk)
   }
 
@@ -110,7 +162,9 @@ export default function DayModal() {
       footer={
         <>
           <button onClick={closeModal} style={btnSecondary}>Close</button>
-          <button onClick={handleSave} style={btnPrimary}>Save Shift</button>
+          <button onClick={handleSave} style={btnPrimary}>
+            {formMode === 'edit' ? 'Save Changes' : 'Save Shift'}
+          </button>
         </>
       }
     >
@@ -126,12 +180,17 @@ export default function DayModal() {
       </div>
 
       {/* Existing shifts */}
-      <DayShiftsList shifts={dayShifts} jobs={jobs} onDelete={handleDeleteShift} />
+      <DayShiftsList
+        shifts={dayShifts}
+        jobs={jobs}
+        onDelete={handleDeleteShift}
+        onUpdateActual={handleUpdateActual}
+      />
 
       {/* Divider */}
       <div style={{ borderTop: '1px solid var(--border)', margin: '12px 0', paddingTop: 12 }}>
         <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--muted)', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-          Add New Shift
+          {formMode === 'edit' ? '✏️ Edit Shift' : (dayShifts.length > 1 ? 'Add Another Shift' : 'Add New Shift')}
         </div>
 
         {/* Template picker */}
@@ -179,8 +238,35 @@ export default function DayModal() {
 
         {/* Breaks */}
         <div style={{ marginBottom: 10 }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <label style={labelStyle}>Breaks</label>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
+            <div style={{ flex: 1, paddingRight: 8 }}>
+              <label style={labelStyle}>Breaks</label>
+              {missingBreakMins > 0 && (
+                <div style={{
+                  marginTop: 6, padding: '8px 10px',
+                  background: 'rgba(239,68,68,0.10)',
+                  border: '1px solid rgba(239,68,68,0.35)',
+                  borderRadius: 6,
+                  display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+                }}>
+                  <span style={{ fontSize: 11, color: 'var(--accent2)', fontWeight: 700, flex: 1 }}>
+                    ⚠ Japan law requires ≥{requiredMins}-min break for {Math.floor(previewHrs.total)}h shifts.
+                    None logged — paid hours will include this gap unless you save a break.
+                  </span>
+                  <button
+                    onClick={handleInsertDefaultBreak}
+                    style={{
+                      ...addBtnStyle,
+                      background: 'rgba(239,68,68,0.18)',
+                      border: '1px solid rgba(239,68,68,0.4)',
+                      color: 'var(--accent2)',
+                    }}
+                  >
+                    + Insert {requiredMins}-min break
+                  </button>
+                </div>
+              )}
+            </div>
             <button onClick={() => setBreakRows(r => [...r, { start: '12:00', end: '13:00' }])} style={addBtnStyle}>+ Add Break</button>
           </div>
           {breakRows.map((br, i) => (
@@ -199,20 +285,10 @@ export default function DayModal() {
           ))}
         </div>
 
-        {/* Actual Times (per-minute mode) */}
         {perMinutePay && (
-          <div style={{ background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.2)', borderRadius: 8, padding: 12, marginBottom: 10 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--accent)', marginBottom: 8 }}>⏱ Actual Times</div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-              <div>
-                <label style={labelStyle}>Actual Login</label>
-                <input type="time" value={actualLogin} onChange={e => setActualLogin(e.target.value)} style={inputStyle} />
-              </div>
-              <div>
-                <label style={labelStyle}>Actual Logout</label>
-                <input type="time" value={actualLogout} onChange={e => setActualLogout(e.target.value)} style={inputStyle} />
-              </div>
-            </div>
+          <div style={{ fontSize: 10, color: 'var(--muted)', marginBottom: 8, padding: '6px 8px', background: 'rgba(59,130,246,0.06)', border: '1px solid rgba(59,130,246,0.18)', borderRadius: 6 }}>
+            ⏱ <strong>Per-minute pay is ON.</strong> After saving this shift, expand the
+            "Actual Times" section in the row above to enter clock-in / clock-out.
           </div>
         )}
       </div>
