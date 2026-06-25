@@ -53,6 +53,7 @@ export default function CalendarCell({ day, isToday, isOrientation, jobs, shifts
   const isOverLimit = weekTotal > CONFIG.WEEKLY_HOUR_LIMIT
 
   const hasShifts = (shifts[dk]?.length || 0) > 0
+  const hasActuals = (shifts[dk] || []).some(s => s.actualLogin && s.actualLogout)
 
   const handleClick = () => {
     if (isOrientation) return
@@ -97,6 +98,12 @@ export default function CalendarCell({ day, isToday, isOrientation, jobs, shifts
         <div style={{ display: 'flex', gap: 2 }}>
           {isToday && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--accent2)' }} />}
           {hasShifts && <span style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--green)' }} />}
+          {hasActuals && (
+            <span
+              title="Per-minute actuals logged"
+              style={{ width: 5, height: 5, borderRadius: '50%', background: 'var(--info)' }}
+            />
+          )}
         </div>
       </div>
 
