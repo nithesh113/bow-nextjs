@@ -16,6 +16,7 @@ model User {
   location            String?              @default("Japan")
   schoolFee           Int                  @default(840000) @map("school_fee")
   emailVerified       DateTime?            @map("email_verified") @db.Timestamptz(6)
+  actualTimesEnabled  Boolean              @default(false) @map("actual_times_enabled")
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions            Session[]
@@ -129,8 +130,11 @@ model UserShift {
   userId      String   @db.Uuid
   date        DateTime @db.Date
   jobId       String
-  start       String   // "HH:MM"
-  end         String   // "HH:MM"
+  start       String   // "HH:MM" — scheduled
+  end         String   // "HH:MM" — scheduled
+  actualLogin  String?  // "HH:MM" — actual clock-in (per-minute pay)
+  actualLogout String?  // "HH:MM" — actual clock-out
+  actualBreaks Json?    // Break[] serialized
   templateId  String?  @db.Uuid
   source      String   @default("manual") // 'manual' | 'template' | 'apply'
   workDetails String?  // optional free-text note (branches, breaks, etc.)

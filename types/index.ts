@@ -19,6 +19,10 @@ export interface Break {
 
 // ── Shift ───────────────────────────────────────
 export interface Shift {
+  /** Stable server-side row id (UUID). Used by `updateShiftActuals` to patch the
+   *  matching row when actual-times change. Absent while the row is still being
+   *  flushed on the client (we optimistically persist, then patch the id in). */
+  _id?: string
   jobId: string
   start: string           // scheduled start "HH:MM"
   end: string             // scheduled end "HH:MM"
