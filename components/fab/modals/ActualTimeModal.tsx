@@ -50,6 +50,7 @@ export default function ActualTimeModal() {
   const [logout, setLogout] = useState(nowTime())
   const [breakRows, setBreaks] = useState<Break[]>([])
   const [savedAt, setSavedAt] = useState<number | null>(null)
+  const [lastAutoKey, setLastAutoKey] = useState<string>('off')
 
   const dayShifts = shifts[date] || []
   const effectiveIndex =
@@ -67,6 +68,7 @@ export default function ActualTimeModal() {
     setLogout(selectedShift?.actualLogout || nowTime())
     setBreaks(selectedShift?.actualBreaks || [])
     setSavedAt(null)
+    setLastAutoKey('off')
   }
 
   // Real jobs lookup for the picked shift.
@@ -100,6 +102,28 @@ export default function ActualTimeModal() {
     return acc + (e - s)
   }, 0)
   const missingBreakMins = Math.max(0, requiredMins - loggedBreakMins)
+
+  /**
+   * Auto-insert a default break when the form crosses the Japan-law threshold
+   * and the user has no break logged. The sentinel key (`requiredMins#login#logout`)
+   * ensures the insert only fires once per crossing — the user can still edit,
+   * delete, or add more breaks freely. Logging out of the modal and back in
+   * resets the key (via the shiftKey-sync above).
+   */
+  const autoKey = requiredMins > 0 ? `${requiredMins}#${login}#${logout}` : 'off'
+  if (
+    requiredMins > 0 &&
+    missingBreakMins > 0 &&
+    lastAutoKey !== autoKey
+  ) {
+    const win = defaultBreakWindow(login, logout, requiredMins)
+    if (win) {
+      setLastAutoKey(autoKey)
+      setBreaks((rs) => [...rs, { start: win.start, end: win.end }])
+    }
+  } else if (requiredMins === 0 && lastAutoKey !== 'off') {
+    setLastAutoKey('off')
+  }
 
   const handleInsertDefaultBreak = () => {
     const win = defaultBreakWindow(login, logout, requiredMins)
@@ -302,8 +326,9 @@ export default function ActualTimeModal() {
             </div>
           </div>
 
-          {/* Japan-law break prompt (Bug 3) */}
-          {missingBreakMins > 0 && (
+          {/* Japan-law break prompt (Bug 3) — auto-inserts by default; manual
+              insert button + louder warning only if the user clears the auto entry. */}
+          {missingBreakMins > 0 && requiredMins > 0 && (
             <div
               style={{
                 background: 'rgba(239,68,68,0.10)',
@@ -335,6 +360,21 @@ export default function ActualTimeModal() {
               >
                 + Insert {requiredMins}-min break
               </button>
+            </div>
+          )}
+          {missingBreakMins === 0 && requiredMins > 0 && (
+            <div
+              style={{
+                background: 'rgba(59,130,246,0.08)',
+                border: '1px solid rgba(59,130,246,0.22)',
+                borderRadius: 6,
+                padding: '6px 10px',
+                marginBottom: 10,
+                fontSize: 10, color: 'var(--accent)', fontWeight: 600,
+              }}
+            >
+              ℹ Per Japan Labor Standards Act, a ≥{requiredMins}-min break has been
+              auto-inserted. Edit or delete it if it doesn’t match your actual time.
             </div>
           )}
 
