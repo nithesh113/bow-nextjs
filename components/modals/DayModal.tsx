@@ -107,6 +107,32 @@ export default function DayModal() {
   }, 0)
   const missingBreakMins = Math.max(0, requiredMins - totalBreakMins)
 
+  /**
+   * Auto-insert a default break when the form crosses the Japan-law threshold
+   * and the user has no break logged. Uses a sentinel key derived from the
+   * required length so the auto-insert only fires once per crossing — the user
+   * can still edit, delete, or add more breaks freely.
+   *
+   * If the user clears all breaks (back below threshold + back above again),
+   * this re-fires automatically.
+   */
+  const autoKey = requiredMins > 0 ? `${requiredMins}#${start}#${end}` : 'off'
+  const [lastAutoKey, setLastAutoKey] = useState<string>('')
+  if (
+    perMinutePay &&
+    requiredMins > 0 &&
+    missingBreakMins > 0 &&
+    lastAutoKey !== autoKey
+  ) {
+    const win = defaultBreakWindow(start, end, requiredMins)
+    if (win) {
+      setLastAutoKey(autoKey)
+      setBreakRows((rows) => [...rows, { start: win.start, end: win.end }])
+    }
+  } else if (requiredMins === 0 && lastAutoKey !== 'off') {
+    setLastAutoKey('off')
+  }
+
   const handleTmplChange = (tmplId: string) => {
     setSelectedTmpl(tmplId)
     const t = templates.find(t => t.id === tmplId)
@@ -241,6 +267,7 @@ export default function DayModal() {
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 6 }}>
             <div style={{ flex: 1, paddingRight: 8 }}>
               <label style={labelStyle}>Breaks</label>
+              {/* Still missing required break — red warning + manual insert button. */}
               {missingBreakMins > 0 && (
                 <div style={{
                   marginTop: 6, padding: '8px 10px',
@@ -264,6 +291,19 @@ export default function DayModal() {
                   >
                     + Insert {requiredMins}-min break
                   </button>
+                </div>
+              )}
+              {/* Auto-inserted break — small confirmation that's easy to miss-edit. */}
+              {missingBreakMins === 0 && requiredMins > 0 && (
+                <div style={{
+                  marginTop: 6, padding: '6px 10px',
+                  background: 'rgba(59,130,246,0.08)',
+                  border: '1px solid rgba(59,130,246,0.22)',
+                  borderRadius: 6,
+                  fontSize: 10, color: 'var(--accent)', fontWeight: 600,
+                }}>
+                  ℹ Per Japan Labor Standards Act, a ≥{requiredMins}-min break has been
+                  auto-inserted. Edit or delete if it doesn’t match your actual time.
                 </div>
               )}
             </div>
