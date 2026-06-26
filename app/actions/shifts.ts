@@ -1,8 +1,18 @@
 'use server'
 
+import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
+import type { Break } from '@/types'
+
+// A `NullableJson` field in Prisma 6 accepts only two null-ish shapes:
+//   - `Prisma.JsonNull` — explicit JSON-null sentinel (DB stores JSON null)
+//   - `null` literal    — JS null, treated by Prisma as SQL NULL
+// `Prisma.JsonNull` is still re-exported from the generated namespace in v6;
+// only `InputJsonValue` was dropped from the `Prisma.*` namespace. We don't
+// reference `InputJsonValue` here — Prisma's generated input types accept
+// `JsonValue | null` for our `actualBreaks` field, of which `Break[]` is one.
 
 // ── Types ──────────────────────────────────────────
 export interface ShiftRow {
@@ -12,6 +22,9 @@ export interface ShiftRow {
   jobId: string
   start: string        // HH:MM
   end: string          // HH:MM
+  actualLogin: string | null
+  actualLogout: string | null
+  actualBreaks: import('@/types').Break[] | null
   templateId: string | null
   source: string
   workDetails: string | null
@@ -20,10 +33,13 @@ export interface ShiftRow {
 }
 
 export interface NewShiftInput {
-  date: string         // YYYY-MM-DD
+  date: string             // YYYY-MM-DD
   jobId: string
-  start: string        // HH:MM
-  end: string          // HH:MM
+  start: string            // HH:MM
+  end: string              // HH:MM
+  actualLogin?: string | null
+  actualLogout?: string | null
+  actualBreaks?: import('@/types').Break[] | null
   templateId?: string
   source?: 'manual' | 'template' | 'apply'
   workDetails?: string | null
@@ -49,6 +65,9 @@ function mapShift(row: any): ShiftRow {
     jobId: row.jobId,
     start: row.start,
     end: row.end,
+    actualLogin: row.actualLogin ?? null,
+    actualLogout: row.actualLogout ?? null,
+    actualBreaks: (row.actualBreaks as import('@/types').Break[] | null) ?? null,
     templateId: row.templateId ?? null,
     source: row.source,
     workDetails: row.workDetails ?? null,
@@ -104,12 +123,31 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
       typeof s.workDetails === 'string' && s.workDetails.trim().length > 0
         ? s.workDetails.trim()
         : null
+    // Validate and trim actual-times if supplied.
+    const actualLogin =
+      s.actualLogin && isHHMM(s.actualLogin) ? s.actualLogin : null
+    const actualLogout =
+      s.actualLogout && isHHMM(s.actualLogout) ? s.actualLogout : null
+    // Prisma's NullableJson field requires either:
+    //   - `Prisma.JsonNull` for explicit JSON null in the DB, or
+    //   - a value typed as JSON-serializable (`Prisma.InputJsonValue`).
+    // We cast our `Break[]` to `Prisma.InputJsonValue` because TS cannot
+    // structurally prove an arbitrary array of objects conforms to the
+    // JSON input type — runtime serialization is what makes it safe.
+    const actualBreaks: Prisma.InputJsonValue | typeof Prisma.JsonNull =
+      Array.isArray(s.actualBreaks) && s.actualBreaks.length > 0
+        ? (s.actualBreaks as unknown as Prisma.InputJsonValue)
+        : Prisma.JsonNull
+
     return {
       userId,
       date: parseDateKey(s.date)!,
       jobId: s.jobId,
       start: s.start,
       end: s.end,
+      actualLogin,
+      actualLogout,
+      actualBreaks,
       templateId: s.templateId || null,
       source: s.source || 'manual',
       workDetails: wd,
@@ -134,7 +172,7 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
   // for the modal's success path what matters is: we have *some* row per date.
   const seen = new Set<number>()
   return fetched
-    .filter((r) => {
+    .filter((r: { date: Date; id: string }) => {
       const t = r.date.getTime()
       if (!dates.includes(t)) return false
       if (seen.has(t)) return false
@@ -178,4 +216,63 @@ export async function getAllShifts(): Promise<ShiftRow[]> {
     orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
   })
   return rows.map(mapShift)
+}
+
+/** Replace only the per-minute actual-time fields on one shift by id.
+ *  Other fields (start/end/jobId/templateId/etc.) are untouched.
+ *  Pass any field as `null` to clear it; omit to leave the existing value. */
+export async function updateShiftActuals(input: {
+  shiftId: string
+  actualLogin?: string | null
+  actualLogout?: string | null
+  actualBreaks?: import('@/types').Break[] | null
+}): Promise<ShiftRow | null> {
+  const userId = await requireUserId()
+  if (!input.shiftId || typeof input.shiftId !== 'string') {
+    throw new Error('shiftId is required')
+  }
+  // Validate HH:MM (or null/undefined) before touching the DB.
+  const data: Record<string, unknown> = {}
+  if (input.actualLogin !== undefined) {
+    if (input.actualLogin === null) data.actualLogin = null
+    else if (!isHHMM(input.actualLogin)) throw new Error(`Invalid actualLogin: ${input.actualLogin}`)
+    else data.actualLogin = input.actualLogin
+  }
+  if (input.actualLogout !== undefined) {
+    if (input.actualLogout === null) data.actualLogout = null
+    else if (!isHHMM(input.actualLogout)) throw new Error(`Invalid actualLogout: ${input.actualLogout}`)
+    else data.actualLogout = input.actualLogout
+  }
+  if (input.actualBreaks !== undefined) {
+    data.actualBreaks = input.actualBreaks === null
+      ? Prisma.JsonNull
+      : (Array.isArray(input.actualBreaks)
+          ? (input.actualBreaks as unknown as Prisma.InputJsonValue)
+          : Prisma.JsonNull)
+  }
+  if (Object.keys(data).length === 0) {
+    throw new Error('No actual-time fields supplied')
+  }
+
+  // First confirm ownership (defense in depth — the update would fail with
+  // a record-not-found on a row belonging to a different user too).
+  const existing = await prisma.userShift.findUnique({
+    where: { id: input.shiftId },
+    select: { userId: true },
+  })
+  if (!existing || existing.userId !== userId) {
+    throw new Error('Shift not found')
+  }
+
+  try {
+    const row = await prisma.userShift.update({
+      where: { id: input.shiftId },
+      data,
+    })
+    revalidatePath('/dashboard')
+    return mapShift(row)
+  } catch (err) {
+    console.error('[updateShiftActuals] DB update failed', err)
+    return null
+  }
 }
