@@ -5,6 +5,7 @@ node_modules/
 BOW_NEXTJS_MIGRATION.md
 Bow-Documentation.md
 PROJECT_MAP.md
+.hermes/
 
 # Next.js
 .next/
