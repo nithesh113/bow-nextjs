@@ -14,7 +14,9 @@ interface AppState {
   modalDateKey: string | null
   // FAB
   fabExpanded: boolean
-  // Settings
+  // Settings — sourced from the server (User.actualTimesEnabled) on hydration.
+  // We keep a local mirror so toggling instantly reflects without a round-trip
+  // and so existing reads (`useAppStore().perMinutePay`) keep working.
   perMinutePay: boolean
   // Actions
   setTab: (tab: TopTab) => void
@@ -24,8 +26,12 @@ interface AppState {
   closeModal: () => void
   toggleFAB: () => void
   collapseFAB: () => void
-  togglePerMinutePay: () => void
-  setPerMinutePay: (val: boolean) => void
+  /** Hydrate the per-minute toggle from the server-side user prefs. Called
+   *  on session load by AppShell; replaces the local-only mirror. */
+  hydratePerMinutePay: (enabled: boolean) => void
+  /** Flip the toggle locally and persist to the server. The returned
+   *  Promise resolves with the persistent value (or an error message). */
+  setPerMinutePay: (val: boolean) => Promise<{ success: boolean; error?: string }>
 }
 
 export const useAppStore = create<AppState>()(
@@ -66,14 +72,34 @@ export const useAppStore = create<AppState>()(
 
       collapseFAB: () => set({ fabExpanded: false }),
 
-      togglePerMinutePay: () =>
-        set((s) => ({ perMinutePay: !s.perMinutePay })),
+      hydratePerMinutePay: (enabled) => set({ perMinutePay: !!enabled }),
 
-      setPerMinutePay: (val) => set({ perMinutePay: val }),
+      setPerMinutePay: async (val) => {
+        const next = !!val
+        set({ perMinutePay: next })
+        try {
+          // Lazy-import to keep `'use client'` stores free of server-only deps
+          // when the bundle is read during SSR initial render.
+          const { setActualTimesEnabled } = await import('@/app/actions/account')
+          const res = await setActualTimesEnabled(next)
+          if (!res.success) {
+            return { success: false, error: res.error || 'Failed to save preference.' }
+          }
+          return { success: true }
+        } catch (err) {
+          console.error('[useAppStore.setPerMinutePay] server action failed', err)
+          // We intentionally do not roll back — local UX stays consistent and
+          // the next server-side hydration will reconcile.
+          return { success: false, error: (err as Error).message }
+        }
+      },
     }),
     {
       name: 'bow_app_state',
       partialize: (s) => ({
+        // `curY` / `curM` are genuinely client-only UX state; `perMinutePay`
+        // is also persisted as a best-effort mirror but the server copy is
+        // authoritative — hydration on session load overrides this.
         curY: s.curY, curM: s.curM, perMinutePay: s.perMinutePay,
       }),
     }

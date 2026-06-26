@@ -26,8 +26,13 @@ import { useShiftsStore } from '@/store/useShiftsStore'
 import { AuthUser } from '@/lib/auth/session'
 
 export default function AppShell({ user }: { user: AuthUser }) {
-  const { activeTab, openModal, fabExpanded } = useAppStore()
+  const { activeTab, openModal, fabExpanded, hydratePerMinutePay } = useAppStore()
   const { syncShiftsFromDB } = useShiftsStore()
+
+  // Hydrate the per-minute toggle from the server (User.actualTimesEnabled).
+  useEffect(() => {
+    hydratePerMinutePay(user.actualTimesEnabled)
+  }, [hydratePerMinutePay, user.actualTimesEnabled])
 
   // Single boot: hook up focus/visibility/event listeners that bust
   // the expense cache so the next view rendering refetches from DB.

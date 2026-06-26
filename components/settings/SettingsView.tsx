@@ -1,14 +1,24 @@
 'use client'
 
 import { useRef } from 'react'
+import { toast } from 'sonner'
 import { useAppStore } from '@/store/useAppStore'
 import ToggleSwitch from '@/components/ui/ToggleSwitch'
 import { exportData } from '@/services/exportService'
 import { importData } from '@/services/importService'
 
 export default function SettingsView() {
-  const { perMinutePay, togglePerMinutePay } = useAppStore()
+  const { perMinutePay, setPerMinutePay } = useAppStore()
   const fileRef = useRef<HTMLInputElement>(null)
+
+  const handleToggle = async (next: boolean) => {
+    const res = await setPerMinutePay(next)
+    if (!res.success) {
+      toast.error(res.error || 'Failed to save preference')
+    } else {
+      toast.success(next ? 'Per-minute pay enabled' : 'Per-minute pay disabled')
+    }
+  }
 
   const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
@@ -36,7 +46,10 @@ export default function SettingsView() {
               Track actual clock-in/out for precise earnings
             </div>
           </div>
-          <ToggleSwitch checked={perMinutePay} onChange={togglePerMinutePay} />
+          <ToggleSwitch
+            checked={perMinutePay}
+            onChange={(next) => { void handleToggle(next) }}
+          />
         </div>
       </section>
 

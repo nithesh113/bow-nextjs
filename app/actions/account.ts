@@ -1,5 +1,6 @@
 'use server'
 
+import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser, createToken, hashToken } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
@@ -62,4 +63,23 @@ export async function resendVerificationEmailAction(email: string) {
   }
 
   return { success: true, message: 'Verification email sent! Check your inbox.' }
+}
+
+/** Persist the user's preference for per-minute (actual-times) pay tracking.
+ *  Read by the client on session load (via getAccount prefs) and overridable
+ *  here so the value travels with the account, not just localStorage. */
+export async function setActualTimesEnabled(enabled: boolean): Promise<{ success: boolean; enabled?: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { success: false, error: 'Not authenticated.' }
+  try {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { actualTimesEnabled: !!enabled },
+    })
+    revalidatePath('/dashboard')
+    return { success: true, enabled: !!enabled }
+  } catch (err) {
+    console.error('[setActualTimesEnabled] update failed', err)
+    return { success: false, error: 'Failed to save preference.' }
+  }
 }

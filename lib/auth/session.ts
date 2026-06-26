@@ -13,6 +13,7 @@ export type AuthUser = {
   location: string | null
   schoolFee: number
   emailVerified: Date | null
+  actualTimesEnabled: boolean
 }
 
 export function hashToken(token: string) {
@@ -82,6 +83,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
           location: true,
           schoolFee: true,
           emailVerified: true,
+          actualTimesEnabled: true,
         },
       },
     },
