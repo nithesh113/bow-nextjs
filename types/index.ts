@@ -65,7 +65,7 @@ export interface Expense {
 export type GoalStatus = 'active' | 'urgent' | 'completed' | 'archived'
 
 export interface BudgetGoal {
-  id: number
+  id: string
   name: string
   deadline: string                       // "YYYY-MM-DD"
   target: number                         // ¥ target

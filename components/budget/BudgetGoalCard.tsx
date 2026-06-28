@@ -28,8 +28,8 @@ export default function BudgetGoalCard({ goal, monthKey, monthlyAllocated, savin
     if (val === null) return
     const pct = parseInt(val)
     if (isNaN(pct) || pct < 0 || pct > 100) return alert('Enter a value 0–100')
-    updateGoalPercentage(monthKey, goal.id, pct)
-    recalculate(monthKey, jobs)
+    void updateGoalPercentage(monthKey, goal.id, pct)
+    void recalculate(monthKey, jobs)
   }
 
   return (
@@ -45,7 +45,7 @@ export default function BudgetGoalCard({ goal, monthKey, monthlyAllocated, savin
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
           <StatusBadge status={goal.status} />
-          <button onClick={() => { if (window.confirm(`Delete goal "${goal.name}"?`)) deleteGoal(monthKey, goal.id) }}
+          <button onClick={() => { if (window.confirm(`Delete goal "${goal.name}"?`)) void deleteGoal(monthKey, goal.id) }}
             style={{ background: 'none', border: 'none', color: 'var(--muted)', fontSize: 14, cursor: 'pointer' }}>🗑️</button>
         </div>
       </div>

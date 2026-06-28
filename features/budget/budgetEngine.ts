@@ -86,7 +86,7 @@ export function updateGoalCumulative(
 /** Check if total goal allocation exceeds 100% */
 export function validateGoalPercentages(
   goals: BudgetGoal[],
-  exceptId: number,
+  exceptId: string,
   newPct: number
 ): boolean {
   const others = goals

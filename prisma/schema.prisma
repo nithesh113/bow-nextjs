@@ -26,6 +26,8 @@ model User {
   templates           UserTemplate[]
   shifts              UserShift[]
   jobs                UserJob[]
+  budgetGoals         UserBudgetGoal[]
+  budgetMonthMetas    UserBudgetMonthMeta[]
 
   @@map("users")
 }
@@ -168,4 +170,48 @@ model UserJob {
   @@index([userId])
   @@index([userId, sortOrder])
   @@map("user_jobs")
+}
+
+model UserBudgetMonthMeta {
+  /// Cross-cut unique key per user — one row per `monthKey` (YYYY-MM).
+  /// Holds the per-month state that is meaningful only at the month
+  /// level: notes / free-form reminders. Categories, expenses, and
+  /// goals all live in their own tables.
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  monthKey    String   // "YYYY-MM"
+  notes       String   @default("")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, monthKey])
+  @@index([userId])
+  @@map("user_budget_month_metas")
+}
+
+model UserBudgetGoal {
+  /// Stable client-facing id (Date.now()-style number). Kept as a synthetic
+  /// primary key so cross-month goal re-numbering is never needed when
+  /// goals span calendar boundaries.
+  id           String   @id
+  userId       String   @db.Uuid
+  name         String
+  deadline     String   // "YYYY-MM-DD"
+  target       Int
+  percentage   Int      @default(0)
+  priority     Int      @default(0)
+  createdMonth String   @map("created_month") // "YYYY-MM"
+  /// Per-month accumulated allocation, keyed by monthKey ("YYYY-MM").
+  /// Optional because a brand-new goal may not have any allocations yet.
+  monthlyProgress Json?  @map("monthly_progress")
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, deadline])
+  @@map("user_budget_goals")
 }

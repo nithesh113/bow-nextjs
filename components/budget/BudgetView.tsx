@@ -10,17 +10,19 @@ import { useJobsStore } from '@/store/useJobsStore'
 import { MONTH_NAMES, DEFAULT_CATEGORIES } from '@/lib/constants'
 import { parseMonthKey } from '@/lib/dateUtils'
 import { formatYen } from '@/lib/timeUtils'
-import BudgetCategoryCard from './BudgetCategoryCard'
 import BudgetGoalCard from './BudgetGoalCard'
 import ProgressBar from '@/components/ui/ProgressBar'
 
 export default function BudgetView() {
   const { currentMonth, budgets, ensureMonth, prevMonth, nextMonth, recalculate,
-          addGoal, setBudgets } = useBudgetStore()
+          addGoal } = useBudgetStore()
   const { jobs } = useJobsStore()
 
-  // ═══ All hooks before any return ═══
-  useEffect(() => { ensureMonth(currentMonth) }, [currentMonth, ensureMonth])
+  // Hydrate goals + notes from Neon once per month. Awaited separately so
+  // the render can fall through to the empty-state if the month is fresh.
+  useEffect(() => {
+    void ensureMonth(currentMonth)
+  }, [currentMonth, ensureMonth])
 
   // Pull expenses + categories from the cache. The cache is invalidated by
   // AppShell's listeners (focus / visibilitychange / bow:expense-changed),
@@ -95,35 +97,15 @@ export default function BudgetView() {
         return e.categoryId !== 0
       })
 
-    return { mergedCats, mappedExps, storeExpenses: existingMonth.expenses || [], existingMonth }
-  }, [storedExpenses, budgets, currentMonth])
-
-  // Persist the merged view back into the budget store when it changes,
-  // so existing derive logic (sort, spent sums, edit/delete) keeps working.
-  useEffect(() => {
-    if (storedExpenses === undefined) return  // not loaded yet
-    const { mergedCats, mappedExps, storeExpenses, existingMonth } = mergedData
-    const expKey = (e: { date: string; categoryId: number; amount: number; note: string }) =>
-      `${e.date}|${e.categoryId}|${e.amount}|${e.note || ''}`
-    const newKeys = new Set(mappedExps.map(expKey))
-    const filtered = storeExpenses.filter((e: any) => newKeys.has(expKey(e)))
-    const filteredKeys = new Set(filtered.map(expKey))
-    const finalExps = [
-      ...filtered,
-      ...mappedExps.filter(e => !filteredKeys.has(expKey(e))),
-    ]
-    setBudgets({
-      ...budgets,
-      [currentMonth]: { ...existingMonth, categories: mergedCats, expenses: finalExps },
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    return { mergedCats, mappedExps, existingMonth }
   }, [storedExpenses, currentMonth])
 
   const month = budgets[currentMonth]
 
-  // Derived hooks (always in same order)
-  const expenses = useMemo(() => month?.expenses || [], [month])
-  const categories = month?.categories || []
+  // Source the render directly from the DB-backed merge.
+  // Categories & expenses no longer round-trip through `useBudgetStore`.
+  const expenses = useMemo(() => mergedData.mappedExps, [mergedData])
+  const categories = useMemo(() => mergedData.mergedCats, [mergedData])
 
   const spentByCategory: Record<number, number> = useMemo(() => {
     const map: Record<number, number> = {}
@@ -136,7 +118,11 @@ export default function BudgetView() {
     return [...withSpend].sort((a, b) => (spentByCategory[b.id] || 0) - (spentByCategory[a.id] || 0))
   }, [categories, expenses])
 
-  // Render guard (after all hooks)
+  // Render guard (after all hooks).
+  // `month === undefined` covers the brief window before `ensureMonth`
+  // finishes its first DB read; if the user has no stored month yet, the
+  // goal card and headline still render because `month.goals`/`notes`
+  // come from the store.
   if (!month) {
     return <div style={{ padding: 16, color: 'var(--muted)' }}>Loading…</div>
   }
@@ -170,7 +156,7 @@ export default function BudgetView() {
     const deadline = window.prompt('Deadline (YYYY-MM-DD):')
     if (!deadline) return
     addGoal(currentMonth, {
-      id: Date.now(),
+      id: String(Date.now()),
       name: name.trim(), deadline, target,
       percentage: 0,
       priority: (month.goals || []).length + 1,
