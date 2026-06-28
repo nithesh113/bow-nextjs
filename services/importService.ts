@@ -252,28 +252,39 @@ export async function importData(
   }
 
   // ── categories ───────────────────────────────────────────
+  // Two passes so children don't reference parents that don't exist yet
+  // when we're in merge mode and the new ids differ from the old ones.
   let categoriesInserted = 0
   if (data.categories?.length) {
-    const existing = await getCategories()
-    const byName = new Map(existing.map((c) => [c.name.toLowerCase(), c]))
-    for (const c of data.categories) {
-      const parentName = (c as any).parentName as string | undefined
-      let parentId: string | undefined
-      if (parentName) {
-        parentId = byName.get(parentName.trim().toLowerCase())?.id
-      }
-      try {
-        const existingHit = byName.get(c.name.trim().toLowerCase())
-        if (existingHit && mode === 'merge') {
-          await updateCategory(existingHit.id, c.name, c.icon, c.budget).catch(
-            () => null
-          )
-        } else {
-          await createCategory(c.name, c.icon, parentId)
+    const isParent = (c: any) => !c?.parentName
+    const parentRows = data.categories.filter(isParent)
+    const childRows  = data.categories.filter((c: any) => !isParent(c))
+
+    // Two passes; reuse the live byName map across both.
+    for (let pass = 0; pass < 2; pass++) {
+      const list = pass === 0 ? parentRows : childRows
+      // Re-read after each pass so newly-created categories are visible.
+      const existing = await getCategories()
+      const byName = new Map(existing.map((c) => [c.name.toLowerCase(), c]))
+      for (const c of list) {
+        const parentName = (c as any).parentName as string | undefined
+        let parentId: string | undefined
+        if (parentName) {
+          parentId = byName.get(parentName.trim().toLowerCase())?.id
         }
-        categoriesInserted++
-      } catch {
-        // skip
+        try {
+          const existingHit = byName.get(c.name.trim().toLowerCase())
+          if (existingHit && mode === 'merge') {
+            await updateCategory(existingHit.id, c.name, c.icon, c.budget).catch(
+              () => null
+            )
+          } else {
+            await createCategory(c.name, c.icon, parentId)
+          }
+          categoriesInserted++
+        } catch {
+          // skip
+        }
       }
     }
   }
