@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo } from 'react'
 import { saveCategoryBudgetByName } from '@/app/actions/expenses'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { dateKey } from '@/lib/dateUtils'
 import { useBudgetStore } from '@/store/useBudgetStore'
 import { useExpensesStore } from '@/store/useExpensesStore'

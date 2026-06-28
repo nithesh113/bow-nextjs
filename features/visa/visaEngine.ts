@@ -5,7 +5,7 @@
 // ═══════════════════════════════════════════
 
 import { getWeekStart, weekDays, dateKey } from '@/lib/dateUtils'
-import { getDayHours } from '@/services/storage'
+import { getDayHours } from '@/lib/dayHours'
 import { CONFIG } from '@/lib/constants'
 import type { Job } from '@/types'
 

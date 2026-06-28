@@ -3,7 +3,7 @@
 // ═══════════════════════════════════════════
 
 import { dateKey, getWeekStart, weekDays } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { CONFIG } from '@/lib/constants'
 import type { Job, ShiftsStore } from '@/types'
 

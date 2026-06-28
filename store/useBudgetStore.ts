@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import type { BudgetsStore, MonthBudget, BudgetCategory, Expense, BudgetGoal } from '@/types'
 import { DEFAULT_CATEGORIES, CONFIG } from '@/lib/constants'
 import { monthKey as mkFn, navigateMonth, parseMonthKey } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { dateKey } from '@/lib/dateUtils'
 import {
   getBudgetState,

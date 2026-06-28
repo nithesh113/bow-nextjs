@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { Job } from '@/types'
 import { weekDays, dateKey } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { formatHours, formatYen } from '@/lib/timeUtils'
 import { CONFIG } from '@/lib/constants'
 import ProgressBar from '@/components/ui/ProgressBar'

@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { Job } from '@/types'
 import { getWeekStart, weekDays, dateKey } from '@/lib/dateUtils'
-import { getDayHours } from '@/services/storage'
+import { getDayHours } from '@/lib/dayHours'
 import { formatHours } from '@/lib/timeUtils'
 import { CONFIG } from '@/lib/constants'
 

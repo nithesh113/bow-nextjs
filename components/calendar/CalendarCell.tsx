@@ -4,7 +4,7 @@ import type { Job, ShiftsStore } from '@/types'
 import { useAppStore } from '@/store/useAppStore'
 import { useShiftsStore } from '@/store/useShiftsStore'
 import { dateKey, getWeekStart } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { formatHours, formatYen } from '@/lib/timeUtils'
 import { CONFIG } from '@/lib/constants'
 

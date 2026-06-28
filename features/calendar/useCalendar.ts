@@ -7,7 +7,7 @@ import { useAppStore } from '@/store/useAppStore'
 import { useJobsStore } from '@/store/useJobsStore'
 import { useShiftsStore } from '@/store/useShiftsStore'
 import { calendarGridDates, getWeekStart, weekDays, dateKey, monthKey } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { useMemo } from 'react'
 
 export function useCalendar() {

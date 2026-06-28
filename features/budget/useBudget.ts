@@ -5,7 +5,7 @@
 
 import { useBudgetStore } from '@/store/useBudgetStore'
 import { useJobsStore } from '@/store/useJobsStore'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { dateKey, parseMonthKey } from '@/lib/dateUtils'
 import { useMemo } from 'react'
 

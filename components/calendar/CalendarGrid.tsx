@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { Job, ShiftsStore } from '@/types'
 import { calendarGridDates, getWeekStart, weekDays, dateKey } from '@/lib/dateUtils'
-import { getDayHours } from '@/services/storage'
+import { getDayHours } from '@/lib/dayHours'
 import { CONFIG } from '@/lib/constants'
 import CalendarCell from './CalendarCell'
 import WeekSummaryRow from './WeekSummaryRow'

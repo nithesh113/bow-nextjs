@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import type { Job } from '@/types'
 import { dateKey } from '@/lib/dateUtils'
-import { getDayHours, getNightHours } from '@/services/storage'
+import { getDayHours, getNightHours } from '@/lib/dayHours'
 import { formatHours, formatYen } from '@/lib/timeUtils'
 
 interface Props { curY: number; curM: number; jobs: Job[] }
