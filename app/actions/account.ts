@@ -66,8 +66,10 @@ export async function resendVerificationEmailAction(email: string) {
 }
 
 /** Persist the user's preference for per-minute (actual-times) pay tracking.
- *  Read by the client on session load (via getAccount prefs) and overridable
- *  here so the value travels with the account, not just localStorage. */
+ *  The value is stored on `User.actualTimesEnabled`; the client mirrors it
+ *  in `useAppStore` after AppShell's `hydratePerMinutePay` call so the FAB
+ *  per-minute section can reflect the preference before the network round
+ *  trip completes. There is no `localStorage` participation in v6.4. */
 export async function setActualTimesEnabled(enabled: boolean): Promise<{ success: boolean; enabled?: boolean; error?: string }> {
   const user = await getCurrentUser()
   if (!user) return { success: false, error: 'Not authenticated.' }

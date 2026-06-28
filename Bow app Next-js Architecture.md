@@ -1,36 +1,57 @@
+# BOW — Project Structure (v6.4)
+
+> Snapshot of the v6.4 tree. Brought up to date after the localStorage → Neon DB migration (Phases 1-3 + cleanup). Run from `bow-nextjs/` after `npm install`.
+
+```
 bow-nextjs/
 │
-├── 📄 package.json              dependencies (next, react, zustand)
-├── 📄 tsconfig.json             TypeScript config
-├── 📄 next.config.ts            output: 'export' for GitHub Pages
+├── 📄 package.json              dependencies (next 16, react 19, zustand, prisma, etc.)
+├── 📄 tsconfig.json             TypeScript config (`@/*` aliases root to project root)
+├── 📄 next.config.ts            Turbopack defaults; no static export
 ├── 📄 .gitignore
+├── 📄 .npmrc                    `production=false`, `include=dev`, `legacy-peer-deps=true`
 ├── 📄 README.md
 │
-├── app/                         Next.js App Router
-│   ├── layout.tsx               fonts (Syne + JetBrains Mono), metadata
-│   ├── page.tsx                 loads AppShell (CSR only, no SSR)
-│   └── globals.css              CSS variables, base reset, animations
+├── app/                         Next.js App Router (v16)
+│   ├── layout.tsx               fonts (Syne + JetBrains Mono), metadata, Toaster
+│   ├── globals.css              CSS variables, base reset, animations
+│   ├── auth/actions.ts          register / login / forgot-password / reset-password / verify-email
+│   ├── actions/
+│   │   ├── account.ts           updateAccount, resendVerificationEmail, setActualTimesEnabled
+│   │   ├── shifts.ts            shift CRUD + recompute
+│   │   ├── jobs.ts              job CRUD + seedDefaultJobsIfEmpty
+│   │   ├── templates.ts         template CRUD
+│   │   ├── expenses.ts          categories + expenses CRUD + saveCategoryBudgetByName
+│   │   └── budget.ts            notes + goals CRUD (Phase 3)
+│   ├── dashboard/page.tsx       Protected dashboard (requires session)
+│   ├── login/                   Login page
+│   ├── register/                Registration page
+│   ├── verify/                  "Check your email" with resend form
+│   ├── verify-email/route.ts    GET handler for email token validation
+│   ├── forgot-password/         Forgot password page
+│   └── reset-password/          Reset password page
 │
 ├── types/
-│   └── index.ts                 ALL TypeScript interfaces (Job, Shift, Budget…)
+│   └── index.ts                 Job, Shift, Budget*, Template, Expense, etc.
 │
 ├── lib/                         Pure utilities — no React, no side effects
 │   ├── constants.ts             CONFIG, DEFAULT_JOBS, DEFAULT_CATEGORIES
-│   ├── dateUtils.ts             dateKey, getWeekStart, calendarGridDates…
-│   ├── timeUtils.ts             timeToMins, formatHours, formatYen…
-│   └── nightPayEngine.ts        calcShiftHours, calcShiftEarned (minute loop)
+│   ├── dateUtils.ts             monthKey, dateKey, navigateMonth, parseMonthKey
+│   ├── timeUtils.ts             timeToMins, formatHours, formatYen
+│   ├── nightPayEngine.ts        calcShiftHours / calcShiftEarned / recalculateDayTotals
+│   └── dayHours.ts              getDayHours / getNightHours (shifts-store bridge)
 │
-├── services/                    Side-effect services (localStorage I/O)
-│   ├── storage.ts               All localStorage read/write operations
+├── services/                    JSON export/import — reads from DB-backed stores
 │   ├── exportService.ts         Build JSON backup → trigger download
-│   └── importService.ts         Parse JSON → REPLACE or MERGE
+│   └── importService.ts         Parse JSON → REPLACE or MERGE into Neon
 │
-├── store/                       Zustand stores (global state + persistence)
-│   ├── useJobsStore.ts          jobs[] + CRUD
-│   ├── useShiftsStore.ts        shifts{} + add/delete/updateActual
-│   ├── useTemplatesStore.ts     templates[] + apply to weeks
-│   ├── useBudgetStore.ts        budgets{} + categories/goals/expenses
-│   └── useAppStore.ts           UI state (curY/curM, activeTab, modal, FAB)
+├── store/                       Zustand stores — DB-backed where applicable
+│   ├── useAppStore.ts           UI state (activeTab, openModal, per-minute toggle)
+│   ├── useShiftsStore.ts        UserShift cache (`wh_shifts` Zustand mirror)
+│   ├── useJobsStore.ts          UserJob cache (no localStorage round-trip)
+│   ├── useTemplatesStore.ts     UserTemplate cache
+│   ├── useExpensesStore.ts      UserExpenseCategory + UserExpense cache
+│   └── useBudgetStore.ts        Per-month notes + cross-month goals (hydrate on demand)
 │
 ├── features/                    Domain logic hooks (composable)
 │   ├── calendar/
@@ -47,13 +68,8 @@ bow-nextjs/
 │   └── visa/
 │       └── visaEngine.ts       getCurrentWeekStatus, wouldBreachLimit
 │
-├── hooks/                       Generic React hooks
-│   ├── useLocalStorage.ts       Generic typed localStorage hook
-│   ├── useSwipeGesture.ts       Touch swipe detection (left/right)
-│   └── useModal.ts              open/close/toggle modal state
-│
-├── styles/
-│   └── variables.css            Full CSS variable reference sheet
+├── prisma/
+│   └── schema.prisma            11 models — User through UserBudgetGoal
 │
 ├── public/
 │   └── manifest.json            PWA manifest (icons, theme, display)
@@ -61,10 +77,14 @@ bow-nextjs/
 └── components/
     │
     ├── layout/                  App shell structure
-    │   ├── AppShell.tsx         Root — renders all tabs + modals + FAB
+    │   ├── AppShell.tsx         Root — renders all tabs + modals + FAB; hydrates from DB
     │   ├── Topbar.tsx           Sticky header (month nav, export/import)
-    │   ├── TopTabs.tsx          5 tab buttons (Calendar…Settings)
-    │   └── BottomNav.tsx        Fixed bottom (Trans/Stats/Accounts/More)
+    │   ├── TopTabs.tsx          Tab buttons (Calendar…Account)
+    │   └── BottomNav.tsx        Fixed bottom (Templates/FAB/More)
+    │
+    ├── auth/                    LoginForm, RegisterForm, AuthShell, ResendVerificationForm
+    │
+    ├── account/                 AccountView — profile & verification UI
     │
     ├── calendar/                Calendar tab
     │   ├── CalendarView.tsx     Assembles legend + visa + grid
@@ -77,20 +97,17 @@ bow-nextjs/
     │
     ├── modals/                  Calendar-triggered modals
     │   ├── DayModal.tsx         Day entry (shifts list + add form)
-    │   ├── DayShiftsList.tsx    Logged shifts with delete buttons
-    │   ├── DayTimeline.tsx      24h visual timeline (06:00→05:00)
-    │   ├── JobManagerModal.tsx  Edit jobs (color, name, rates)
+    │   ├── JobManagerModal.tsx  Edit jobs (color, name, rates) — async save
     │   ├── VisaWarningModal.tsx 28h limit warning dialog
     │   └── TemplateFormModal.tsx Create new shift template
     │
     ├── templates/               Templates tab
     │   ├── TemplatesView.tsx    List + create button
     │   ├── TemplateCard.tsx     Name, days, job, apply button
-    │   └── ApplyTemplateModal.tsx Select weeks to apply to
+    │   └── ApplyTemplateModal.tsx Select weeks to apply to (routes through useTemplates.applyTemplateToWeeks)
     │
     ├── budget/                  Budget tab
-    │   ├── BudgetView.tsx       Full budget tab (month nav + all sections)
-    │   ├── BudgetCategoryCard.tsx Category row (bar, spent, controls)
+    │   ├── BudgetView.tsx       Full budget tab (month nav + categories + goals)
     │   ├── BudgetGoalCard.tsx   Goal row (progress, %, carry-forward)
     │   └── ExpenseEntryForm.tsx Add expense form + expense list
     │
@@ -101,7 +118,7 @@ bow-nextjs/
     │   └── SettingsView.tsx     Per-minute toggle, export/import, about
     │
     ├── transactions/
-    │   └── TransactionsView.tsx All expenses grouped by date (fixed overlay)
+    │   └── TransactionsView.tsx All expenses grouped by date
     │
     ├── fab/                     Floating Action Button system
     │   ├── FABButton.tsx        Circle + button (rotates to ×)
@@ -118,4 +135,20 @@ bow-nextjs/
         ├── ToggleSwitch.tsx     iOS-style on/off toggle
         ├── TimeInput.tsx        Styled time input with label
         ├── BreakManager.tsx     Add/remove break periods
-        └── StatusBadge.tsx      safe/near/over/active/urgent/completed
+        ├── Button.tsx
+        ├── Card.tsx
+        ├── Field.tsx
+        ├── PasswordField.tsx
+        └── StatusBadge.tsx
+```
+
+## What changed since v6.3
+
+- ✘ `services/storage.ts` — deleted; was the localStorage bridge — now superseded
+- ✘ `hooks/useLocalStorage.ts` — deleted; dead after stores became DB-backed
+- ✘ `app/page.tsx` (CSR-only root) — replaced by `app/(authed)` route group + protected `dashboard/page.tsx`
+- ✘ `Bow app Next-js Architecture` `next.config.ts output: 'export'` — Turbopack-default config retained for SSR/Prisma support
+- ✓ `app/actions/budget.ts` — new (notes + goals CRUD)
+- ✓ `app/actions/jobs.ts` — new (job CRUD + default seeding)
+- ✓ `lib/dayHours.ts` — new (shifts-store bridge)
+- ✓ `prisma/schema.prisma` — grew from 5 → 11 models

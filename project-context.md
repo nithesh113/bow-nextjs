@@ -339,22 +339,26 @@ Used for:
 
 # Data Storage
 
-Current:
+Current (v6.4):
 
 ```text
-LocalStorage
+Neon Postgres (Prisma 6) — source of truth
+ZUSTAND `wh_shifts` cache mirror (instant calendar paint only)
 ```
 
-All user data stored locally.
+All user data persists server-side via the `app/actions/*` server actions.
 
-Includes:
+Models:
 
-* Shifts
-* Jobs
-* Templates
-* Budgets
-* Transactions
-* Settings
+* `User` — account + prefs
+* `UserShift` — daily shifts (canonical source for hours; day-totals derived in-memory)
+* `UserJob` — per-user jobs
+* `UserTemplate` — reusable shift templates
+* `UserExpenseCategory` / `UserExpense` — budget categories + per-month expenses
+* `UserBudgetMonthMeta` — per (user, monthKey) free-form notes
+* `UserBudgetGoal` — cross-month savings goals (JSON `monthlyProgress` carries per-month allocations)
+
+If a stale `wh_jobs3` / `wh_budgets` / `wh_perMinute` / `wh_categories` key is still in browser DevTools it is dead weight — no v6.4 code reads them.
 
 ---
 
@@ -364,11 +368,14 @@ Supported.
 
 Purpose:
 
-Manual backup.
+Operator-side portability (DB → JSON for backup / migration).
 
-JSON format.
+Driven by `services/exportService.ts` (reads DB-backed stores) and `services/importService.ts` (parses JSON → calls the same DB server actions as the app).
 
-Used because app currently has no backend.
+Modes:
+
+* `replace` — wipes & recreates from backup
+* `merge` — except default jobs/categories, dedup by id
 
 ---
 
@@ -421,34 +428,30 @@ Google Login
 
 # Current Next.js Migration Status
 
-Claude generated a Next.js version.
+Migration to Next.js 16 complete. All localStorage round-trips gone except the `wh_shifts` Zustand mirror:
 
-Initial issue:
+| Phase | Outcome |
+|---|---|
+| 0 (tooling + JSON types) | `.npmrc` fix, Prisma 6 JsonNull migration, per-minute wired to server |
+| 1 (shifts) | `wh_shifts` → Neon `UserShift` rows |
+| 2 (jobs) | `wh_jobs3` → Neon `UserJob` rows |
+| 2E (export/import) | `services/storage.ts` shrunk to a 27-line bridge; `services/importService.ts` rewired to call server actions |
+| 3 (budget scaffolding) | `wh_budgets` → `UserBudgetMonthMeta` + `UserBudgetGoal` |
+| 5A/5B (cleanup) | `services/storage.ts` deleted; `lib/dayHours.ts` is the only day-hours bridge |
 
-```text
-next.config.ts not supported
+Last 7 commits on `arockia/V7-nextjs-migration`:
+
+```
+c26c757 feat(refactor): relocate day-hours bridge into lib/dayHours (drop services/)
+61d00e2 feat(budget): DB-backed useBudgetStore + Goal CRUD (kills wh_budgets)
+22d3258 feat(jobs): DB-backed useJobsStore + JobManagerModal async save (kills wh_jobs3)
+2f5ddff feat(jobs): add UserJob Prisma model + jobs action server module
+4e48c8a feat(shifts): derive per-(day,job) hours from DB-backed shifts map (kills wh2_*/wh2n_* localStorage)
+4f26f7c chore: tooling/pinning — gitignore .hermes/, npmrc fix, package overrides + lockfile
+bbb6e68 fix(server): Prisma 6 JsonNull/InputJsonValue types in shifts.ts (Bug 2)
 ```
 
-Resolved by replacing with:
-
-```text
-next.config.mjs
-```
-
-Example:
-
-```javascript
-/** @type {import('next').NextConfig} */
-const nextConfig = {
-  output: 'export',
-  trailingSlash: true,
-  images: {
-    unoptimized: true,
-  },
-};
-
-export default nextConfig;
-```
+Current `next.config.ts`: Turbopack-default (no static export — Prisma needs the Node runtime).
 
 ---
 
