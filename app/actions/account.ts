@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser, createToken, hashToken } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
+import { appUrl as makeAppUrl } from '@/lib/auth/urls'
 
 export async function updateAccount(data: { name: string; email: string; currency: string; location: string; schoolFee: number }) {
   const user = await getCurrentUser()
@@ -55,8 +56,7 @@ export async function resendVerificationEmailAction(email: string) {
     },
   })
 
-  const appUrl = process.env.APP_URL || 'http://localhost:3000'
-  const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`))
 
   if (!emailRes.success) {
     return { success: false, error: `Failed to send email: ${emailRes.error}` }

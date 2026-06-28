@@ -41,8 +41,12 @@ export async function createSession(userId: string) {
   // Only mark Secure when the request is actually over HTTPS. Mobile devices on
   // LAN IPs (http://192.168.x.x:3000) need a non-Secure cookie to stay logged
   // in; HTTPS deployments still get the Secure flag automatically.
+  //
+  // Always `secure` in production. Vercel serves HTTPS at the load
+  // balancer; an HTTP-on-LAN dev session needs the secure flag off so
+  // the cookie sticks. NODE_ENV drives this — not APP_URL — to
+  // decouple the cookie security posture from the canonical app URL.
   const isHttps = process.env.NODE_ENV === 'production'
-    && (process.env.APP_URL?.startsWith('https://') ?? false)
   cookieStore.set(SESSION_COOKIE, token, {
     httpOnly: true,
     sameSite: 'lax',

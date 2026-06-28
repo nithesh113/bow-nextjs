@@ -39,7 +39,7 @@ This creates all eleven tables on the production instance. Re-runs are idempoten
 | `SMTP_USER`                           | ⚙️        | Sender address (Gmail users: the full email)         |
 | `SMTP_PASS`                           | ⚙️        | App Password, not the account password                |
 | `EMAIL_FROM`                          | ⚙️        | `"BOW <your@gmail>"` — shown to users                |
-| `APP_URL`                             | ✅        | `https://bow-<owner>.vercel.app` (no trailing slash)  — used in password-reset and verify-email links |
+| `APP_URL`                             | ✅        | `https://bow-<owner>.vercel.app` (no trailing slash). Single source of truth — used in verify, password-reset, and "your password changed" emails. In **production** with this unset, server actions throw a loud error rather than silently embedding `localhost`. (`lib/auth/urls.ts`) |
 | `AUTH_COOKIE_NAME`                    | ⚙️        | Defaults to `bow_session`                             |
 
 > Mark each as **Production**, **Preview**, **Development** scope as needed. `DATABASE_URL` and `APP_URL` MUST be Production-only for prod-Neon separation.
@@ -73,8 +73,11 @@ Vercel → Settings → Domains → add your domain (e.g. `bow.yourdomain.com`).
 | `P1001: Can't reach database`                                   | Wrong `DATABASE_URL` or Neon region firewall              |
 | Email never arrives                                             | SMTP `secure` flag mismatch (try 465 vs 587)              |
 | Verify link 404s                                                | Wrong `APP_URL` — must match deployed URL exactly         |
+| Verify / reset links point at `localhost:3000`                  | Forgot to set `APP_URL` in production env vars (`lib/auth/urls.ts` throws loudly in prod) |
 | `cookies I/O errors` in logs                                    | `AUTH_COOKIE_NAME` is missing (defaults to `bow_session`) |
 | Re-deploy needed? Env-var change counts — Vercel redeploys automatically      |
+| Cookie secure flag misaligned (mobile browsers reject cookies) | `secure` is tied to `NODE_ENV === 'production'`, not `APP_URL`. Vercel deployments get HTTPS so the flag is correct.                                       |
+
 
 ## Database migrations
 

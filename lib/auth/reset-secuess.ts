@@ -1,4 +1,5 @@
 import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
+import { appUrl as makeAppUrl } from '@/lib/auth/urls'
 
 export async function sendPasswordChangedEmail(
   email: string,
@@ -67,7 +68,7 @@ export async function sendPasswordChangedEmail(
 
             <div style="text-align:center;margin-top:32px;">
               <a
-                href="${process.env.NEXT_PUBLIC_APP_URL || '#'}"
+                href="${makeAppUrl('/login')}"
                 style="
                   background:#3b82f6;
                   color:#ffffff;

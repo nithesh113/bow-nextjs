@@ -9,6 +9,7 @@ import { sendWelcomeEmail } from '@/lib/auth/welcome-temp'
 import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
 import { sendPasswordChangedEmail } from '@/lib/auth/reset-secuess'
 import { prisma } from '@/lib/auth/prisma'
+import { appUrl as makeAppUrl } from '@/lib/auth/urls'
 
 export type AuthActionState = {
   error?: string
@@ -69,8 +70,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
     },
   })
 
-  const appUrl = process.env.APP_URL || 'http://localhost:3000'
-  const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`))
   await sendWelcomeEmail(email, name)
 
   if (!emailRes.success) {
@@ -119,8 +119,7 @@ export async function forgotPasswordAction(_: AuthActionState, formData: FormDat
       },
     })
 
-    const appUrl = process.env.APP_URL || 'http://localhost:3000'
-    await sendPasswordResetEmail(email, `${appUrl}/reset-password?token=${token}`)
+    await sendPasswordResetEmail(email, makeAppUrl(`/reset-password?token=${token}`))
   }
 
   return { success: 'If an account exists, a reset link has been sent.' }
@@ -203,8 +202,7 @@ export async function resendVerificationAction(_: AuthActionState, formData: For
     },
   })
 
-  const appUrl = process.env.APP_URL || 'http://localhost:3000'
-  const emailRes = await sendVerificationEmail(email, `${appUrl}/verify-email?token=${token}`)
+  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`))
 
   if (!emailRes.success) {
     return { error: `Failed to send email: ${emailRes.error}` }
