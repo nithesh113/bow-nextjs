@@ -124,10 +124,21 @@ export interface BackupEntry {
 }
 
 export interface BackupData {
+  schemaVersion?: '6.3.0' | '6.4.0'            // absence ⇒ treated as 6.3.0
   exportedAt: string
   profile: { country: string; weeklyLimit: number; currency: string }
   jobs: Job[]
-  entries: BackupEntry[]
+  /** v6.3 legacy: per-(day, job) hours cache. Hours are derived from
+   *  `UserShift` rows in v6.4, so `entries` is an empty array on export
+   *  and ignored on import. Kept for backward-compatibility reads. */
+  entries?: BackupEntry[]
   shifts: ShiftsStore
   templates: Template[]
+  /** v6.4 additions — all optional so a v6.3 file still validates. */
+  categories?: BudgetCategory[]
+  /** Grouped by monthKey ("YYYY-MM"). Empty when the user has no expenses yet. */
+  expenses?: Record<string, Expense[]>
+  goals?: BudgetGoal[]
+  /** monthKey → free-form notes. */
+  monthNotes?: Record<string, string>
 }

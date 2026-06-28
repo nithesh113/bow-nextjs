@@ -1,31 +1,11 @@
 'use client'
 
-import { useRef } from 'react'
 import { useAppStore } from '@/store/useAppStore'
 import { MONTH_NAMES } from '@/lib/constants'
-import { exportData } from '@/services/exportService'
-import { importData } from '@/services/importService'
 import { logoutAction } from '@/app/auth/actions'
 
 export default function Topbar({ userName }: { userName: string }) {
   const { curY, curM, changeMonth, goToday, setModal } = useAppStore()
-  const fileRef = useRef<HTMLInputElement>(null)
-
-  const handleImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-    const mode = window.confirm(
-      'REPLACE (OK) or MERGE (Cancel)?\n\nOK = Replace all existing data\nCancel = Merge with existing data'
-    ) ? 'replace' : 'merge'
-    try {
-      const result = await importData(file, mode)
-      alert(`✅ Import complete (${mode})\n\nJobs: ${result.jobs}\nEntries: ${result.entries}\nShifts: ${result.shifts}\nTemplates: ${result.templates}`)
-      window.location.reload()
-    } catch (err) {
-      alert(`❌ Import failed: ${(err as Error).message}`)
-    }
-    e.target.value = ''
-  }
 
   return (
     <header style={{
@@ -56,12 +36,9 @@ export default function Topbar({ userName }: { userName: string }) {
       {/* Action Buttons */}
       <button onClick={goToday} style={iconBtnStyle}>Today</button>
       <button onClick={() => setModal('jobManager')} style={iconBtnStyle}>⚙ Jobs</button>
-      <button onClick={exportData} style={iconBtnStyle}>↓</button>
-      <button onClick={() => fileRef.current?.click()} style={iconBtnStyle}>↑</button>
       <form action={logoutAction}>
         <button title={`Signed in as ${userName}`} style={iconBtnStyle}>Logout</button>
       </form>
-      <input ref={fileRef} type="file" accept=".json" style={{ display: 'none' }} onChange={handleImport} />
     </header>
   )
 }

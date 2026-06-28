@@ -340,3 +340,75 @@ export async function deleteExpenseAction(id: string): Promise<boolean> {
   revalidatePath('/dashboard')
   return true
 }
+
+// ── Bulk helpers (used by services/importService.ts for v6.4 backups) ──
+
+/**
+ * Replace the user's expenses for the given monthKeys only.
+ * Used by `importData(replace)` so we don't nuke expense history the
+ * user kept locally but didn't include in the backup.
+ */
+export async function replaceMonthsExpenses(
+  monthKeys: string[]
+): Promise<{ count: number; monthKeys: string[] }> {
+  const userId = await getUserId()
+  if (!monthKeys.length) return { count: 0, monthKeys: [] }
+  // Build a `(userId, monthKey)` date range: monthKey = "YYYY-MM"
+  // ↦ [first, last) date inclusive of first day of next month.
+  const ranges = monthKeys.map((mk) => {
+    const [yStr, mStr] = mk.split('-')
+    const y = Number(yStr)
+    const m = Number(mStr)
+    const start = new Date(Date.UTC(y, m - 1, 1))
+    const end = new Date(Date.UTC(y, m, 1)) // exclusive
+    return { start, end }
+  })
+  let total = 0
+  for (const r of ranges) {
+    const { count } = await prisma.expense.deleteMany({
+      where: { userId, date: { gte: r.start, lt: r.end } },
+    })
+    total += count
+  }
+  revalidatePath('/dashboard')
+  return { count: total, monthKeys }
+}
+
+/**
+ * Bulk-create expense rows. Caller is responsible for deduplication by
+ * `(date, categoryId, amount, note)` when running in merge mode.
+ */
+export async function createExpensesBulk(
+  rows: Array<{
+    categoryId: string
+    subcategoryId?: string | null
+    amount: number
+    date: string
+    note?: string
+  }>
+): Promise<{ count: number }> {
+  const userId = await getUserId()
+  if (!rows.length) return { count: 0 }
+
+  // Chunk to avoid overwhelming a single round-trip; Postgres handles
+  // large INSERTs but we err on the safe side for the LAN.
+  const chunkSize = 100
+  let inserted = 0
+  for (let i = 0; i < rows.length; i += chunkSize) {
+    const chunk = rows.slice(i, i + chunkSize)
+    const result = await prisma.expense.createMany({
+      data: chunk.map((r) => ({
+        userId,
+        categoryId: r.categoryId,
+        subcategoryId: r.subcategoryId ?? null,
+        amount: Math.round(r.amount),
+        date: new Date(r.date),
+        note: r.note ?? '',
+      })),
+      skipDuplicates: true,
+    })
+    inserted += result.count
+  }
+  revalidatePath('/dashboard')
+  return { count: inserted }
+}
