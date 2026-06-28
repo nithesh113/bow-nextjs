@@ -2,7 +2,6 @@ import { create } from 'zustand'
 import type { Template, Shift } from '@/types'
 import { dateKey, getWeekStart, weekDays, mondayIndex } from '@/lib/dateUtils'
 import { calcShiftHours } from '@/lib/nightPayEngine'
-import { setDayHours } from '@/services/storage'
 import {
   getTemplates,
   createTemplate,
@@ -166,8 +165,9 @@ export const useTemplatesStore = create<TemplatesState>()((set, get) => ({
           breaks: [],
         }
 
-        const hrs = calcShiftHours(shift)
-        setDayHours(dk, template.jobId, hrs.total, hrs.night)
+        // dayTotals are derived inside `useShiftsStore.addShift` from the
+        // persisted shift row — no separate cache write is required.
+        void calcShiftHours(shift) // (parity with prior flow; effect is in addShift)
         addShift(dk, shift)
       }
     }

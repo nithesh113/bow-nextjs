@@ -2,12 +2,24 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { Shift, ShiftsStore, Break } from '@/types'
 import { recalculateDayTotals } from '@/lib/nightPayEngine'
-import { setDayHours, clearDayHours } from '@/services/storage'
 import { createShifts, getAllShifts, updateShiftActuals, type NewShiftInput, type ShiftRow } from '@/app/actions/shifts'
-import { useJobsStore } from './useJobsStore'
+
+/**
+ * Hour totals per (date, job) — derived from the canonical `shifts` map
+ * (which itself is DB-backed via `syncShiftsFromDB`). Stored in-memory on
+ * the Zustand state so the calendar / visa / budget views can read it
+ * synchronously without going through `services/storage.ts` (localStorage)
+ * or the network again.
+ *
+ * The shape mirrors `recalculateDayTotals`: `{ [jid]: { total, day, night } }`.
+ */
+export type DayTotals = Record<string, { total: number; day: number; night: number }>
+export type DayTotalsMap = Record<string /* dateKey */, DayTotals>
 
 interface ShiftsState {
   shifts: ShiftsStore
+  /** Derived from `shifts` — see `refreshDayTotals`. Read-only externally. */
+  dayTotals: DayTotalsMap
   /** Create a shift locally for instant UI, then optimistically flush to DB.
    *  Resolves once the row is persisted (callers don't need to await — the
    *  local state is updated first). */
@@ -24,33 +36,56 @@ interface ShiftsState {
     logout: string,
     breaks?: Break[]
   ) => Promise<void>
+  /** Recompute `dayTotals` for one date from the current `shifts[dk]`. */
   recalculateDayHours: (dateKey: string) => void
   setShifts: (shifts: ShiftsStore) => void
   addShiftsToDB: (inputs: NewShiftInput[]) => Promise<ShiftRow[]>
   syncShiftsFromDB: () => Promise<void>
 }
 
-function writeHoursCache(dateKey: string, dayShifts: Shift[]): void {
+/**
+ * Selector helper — read total hours for (dk, jid) from the in-memory map.
+ * Returns 0 when the day or job isn't tracked yet. Synchronous, no IO.
+ */
+export function getDayTotalHours(state: ShiftsState, dk: string, jid: string): number {
+  return state.dayTotals[dk]?.[jid]?.total ?? 0
+}
+
+/** Read night-hours for (dk, jid) from the in-memory map. Synchronous, no IO. */
+export function getDayNightHours(state: ShiftsState, dk: string, jid: string): number {
+  return state.dayTotals[dk]?.[jid]?.night ?? 0
+}
+
+/** Compute and store `dayTotals[dk]` from the current `shifts[dk]`. */
+function computeDayTotals(state: ShiftsState, dk: string): DayTotals {
+  return recalculateDayTotals(state.shifts[dk] || [])
+}
+
+/** Set the in-memory totals for one day in a draft of the next `dayTotals` map. */
+function withRefreshedDay(next: DayTotalsMap, dk: string, dayShifts: Shift[]): DayTotalsMap {
   const totals = recalculateDayTotals(dayShifts)
-  const allJobIds = [...new Set(dayShifts.map((s) => s.jobId))]
-  clearDayHours(dateKey, allJobIds)
-  for (const [jid, hrs] of Object.entries(totals)) {
-    setDayHours(dateKey, jid, hrs.total, hrs.night)
+  if (Object.keys(totals).length === 0) {
+    const { [dk]: _drop, ...rest } = next
+    return rest
   }
+  return { ...next, [dk]: totals }
 }
 
 export const useShiftsStore = create<ShiftsState>()(
   persist(
     (set, get) => ({
       shifts: {},
+      dayTotals: {},
 
       addShift: async (dk, shift) => {
         // 1) Optimistic local state
         set((s) => {
           const day = [...(s.shifts[dk] || []), { ...shift }]
-          const next = { ...s.shifts, [dk]: day }
-          writeHoursCache(dk, day)
-          return { shifts: next }
+          const nextShifts = { ...s.shifts, [dk]: day }
+          return {
+            shifts: nextShifts,
+            dayTotals: withRefreshedDay(s.dayTotals, dk, day),
+          }
         })
 
         // 2) Persist to DB (fire-and-forget; UI already updated)
@@ -91,20 +126,24 @@ export const useShiftsStore = create<ShiftsState>()(
         set((s) => {
           const day = [...(s.shifts[dk] || [])]
           day[index] = shift
-          const next = { ...s.shifts, [dk]: day }
-          writeHoursCache(dk, day)
-          return { shifts: next }
+          const nextShifts = { ...s.shifts, [dk]: day }
+          return {
+            shifts: nextShifts,
+            dayTotals: withRefreshedDay(s.dayTotals, dk, day),
+          }
         })
       },
 
       deleteShift: (dk, index) => {
         set((s) => {
           const day = (s.shifts[dk] || []).filter((_, i) => i !== index)
-          const next = { ...s.shifts }
-          if (day.length === 0) delete next[dk]
-          else next[dk] = day
-          writeHoursCache(dk, day)
-          return { shifts: next }
+          const nextShifts = { ...s.shifts }
+          if (day.length === 0) delete nextShifts[dk]
+          else nextShifts[dk] = day
+          return {
+            shifts: nextShifts,
+            dayTotals: withRefreshedDay(s.dayTotals, dk, day),
+          }
         })
       },
 
@@ -123,9 +162,11 @@ export const useShiftsStore = create<ShiftsState>()(
           }
           rowId = day[index]._id
           target = day[index]
-          const next = { ...s.shifts, [dk]: day }
-          writeHoursCache(dk, day)
-          return { shifts: next }
+          const nextShifts = { ...s.shifts, [dk]: day }
+          return {
+            shifts: nextShifts,
+            dayTotals: withRefreshedDay(s.dayTotals, dk, day),
+          }
         })
 
         // Snapshot for async use (state setter closure can be GC'd between awaits).
@@ -176,8 +217,7 @@ export const useShiftsStore = create<ShiftsState>()(
       },
 
       recalculateDayHours: (dk) => {
-        const day = get().shifts[dk] || []
-        writeHoursCache(dk, day)
+        set((s) => ({ dayTotals: withRefreshedDay(s.dayTotals, dk, s.shifts[dk] || []) }))
       },
 
       addShiftsToDB: async (inputs) => {
@@ -208,20 +248,16 @@ export const useShiftsStore = create<ShiftsState>()(
             })
           }
 
-          const jobs = useJobsStore.getState().jobs
-          const allJobIds = jobs.map(j => j.id)
-          const oldKeys = Object.keys(get().shifts)
-          for (const ok of oldKeys) {
-            if (!nextShifts[ok]) {
-              clearDayHours(ok, allJobIds)
-            }
-          }
-
+          // Rebuild dayTotals from the fresh canonical state. Days that
+          // disappeared from the DB are dropped from the map (they no
+          // longer contribute to any hours/earnings total).
+          const nextDayTotals: DayTotalsMap = {}
           for (const [dk, dayShifts] of Object.entries(nextShifts)) {
-            writeHoursCache(dk, dayShifts)
+            const totals = recalculateDayTotals(dayShifts)
+            if (Object.keys(totals).length > 0) nextDayTotals[dk] = totals
           }
 
-          set({ shifts: nextShifts })
+          set({ shifts: nextShifts, dayTotals: nextDayTotals })
         } catch (err) {
           console.error('[useShiftsStore] syncShiftsFromDB failed', err)
         }
