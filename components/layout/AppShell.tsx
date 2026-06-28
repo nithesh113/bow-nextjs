@@ -23,11 +23,15 @@ import ShiftEntryModal from '@/components/fab/modals/ShiftEntryModal'
 import ActualTimeModal from '@/components/fab/modals/ActualTimeModal'
 import TemplateEntryModal from '@/components/fab/modals/TemplateEntryModal'
 import { useShiftsStore } from '@/store/useShiftsStore'
+import { useJobsStore } from '@/store/useJobsStore'
+import { useTemplatesStore } from '@/store/useTemplatesStore'
 import { AuthUser } from '@/lib/auth/session'
 
 export default function AppShell({ user }: { user: AuthUser }) {
   const { activeTab, openModal, fabExpanded, hydratePerMinutePay } = useAppStore()
   const { syncShiftsFromDB } = useShiftsStore()
+  const { fetchJobsFromDB, seedJobs } = useJobsStore()
+  const { fetchTemplatesFromDB } = useTemplatesStore()
 
   // Hydrate the per-minute toggle from the server (User.actualTimesEnabled).
   useEffect(() => {
@@ -36,10 +40,15 @@ export default function AppShell({ user }: { user: AuthUser }) {
 
   // Single boot: hook up focus/visibility/event listeners that bust
   // the expense cache so the next view rendering refetches from DB.
+  // Also seed the default jobs the first time for a fresh user account,
+  // then hydrate jobs + templates from the DB.
   useEffect(() => {
     startExpensesInvalidationListeners()
+    void seedJobs()
+    void fetchJobsFromDB()
+    void fetchTemplatesFromDB()
     syncShiftsFromDB()
-  }, [syncShiftsFromDB])
+  }, [syncShiftsFromDB, fetchJobsFromDB, seedJobs, fetchTemplatesFromDB])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>

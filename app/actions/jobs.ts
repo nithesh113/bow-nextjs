@@ -3,7 +3,6 @@
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser } from '@/lib/auth/session'
 import { revalidatePath } from 'next/cache'
-import type { Job } from '@/types'
 
 // ── Types ──────────────────────────────────────────
 
@@ -48,18 +47,6 @@ function mapJob(row: any): JobRow {
     sortOrder: row.sortOrder ?? 0,
     createdAt: row.createdAt?.toISOString?.() ?? '',
     updatedAt: row.updatedAt?.toISOString?.() ?? '',
-  }
-}
-
-/** Convert a DB JobRow into the client-side Job shape used everywhere
- *  (the `Job` interface is intentionally minimal: id, name, color, rate, nightRate). */
-export function jobRowToJob(row: JobRow): Job {
-  return {
-    id: row.id,
-    name: row.name,
-    color: row.color,
-    rate: row.rate,
-    nightRate: row.nightRate,
   }
 }
 
