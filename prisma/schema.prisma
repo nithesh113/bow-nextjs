@@ -25,6 +25,7 @@ model User {
   expenses            Expense[]
   templates           UserTemplate[]
   shifts              UserShift[]
+  jobs                UserJob[]
 
   @@map("users")
 }
@@ -146,4 +147,25 @@ model UserShift {
   @@index([userId])
   @@index([userId, date], map: "user_shifts_user_date_idx")
   @@map("user_shifts")
+}
+
+model UserJob {
+  /// Stable client-facing identifier (e.g. "j1", "j2", or "j" + Date.now()).
+  /// Acts as the primary key so existing `UserShift.jobId` strings ("j1",
+  /// "j_NNN") need no backfill when the localStorage jobs store goes away.
+  id          String   @id
+  userId      String   @db.Uuid
+  name        String
+  color       String
+  rate        Int
+  nightRate   Int
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, sortOrder])
+  @@map("user_jobs")
 }
