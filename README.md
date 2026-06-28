@@ -1,10 +1,10 @@
 # BOW — Japan Work Hours & Budget Tracker
 
-**Version:** 6.4 | **Stack:** Next.js 16 · TypeScript · Zustand · PostgreSQL (Neon) · Prisma 6 · Resend · Sonner
-
-> Budget + Overtime + Work tracker for Japan international students on a student visa. Tracks your 28h/week work limit, night-pay premiums, budget allocations, and savings goals — all from a mobile-first dark-mode app.
-
+**Version:** 6.4 | **Stack:** Next.js 16 · TypeScript · Zustand · PostgreSQL (Neon) · Prisma 6 · Sonner
 > **Persistence model:** As of v6.4, **all durable user data lives in Neon Postgres** via Prisma. The browser keeps a ZUSTAND cache (`wh_shifts` mirror only) so the calendar renders instantly while the DB re-syncs. There is no other `localStorage` round-trip — `wh_jobs3`, `wh_budgets`, `wh_perMinute`, `wh_categories`, etc. are gone.
+>
+> **Deploy:** one-click to Vercel — see [VERCEL.md](./VERCEL.md).
+> Budget + Overtime + Work tracker for Japan international students on a student visa. Tracks your 28h/week work limit, night-pay premiums, budget allocations, and savings goals — all from a mobile-first dark-mode app.
 
 ---
 
@@ -32,6 +32,19 @@ npm run dev
 Open [http://localhost:3000](http://localhost:3000)
 
 > LAN access from a phone: APP_URL must reflect the LAN address (e.g. `http://192.168.0.22:3000`) so verification/password-reset emails embed the right link.
+
+---
+
+## Deploy
+
+This repo is **Vercel-ready out of the box** — `vercel.json`, `.vercelignore`, and `postinstall` are all wired.
+
+- One-click: [Vercel Import](https://vercel.com/new) → pick the GitHub repo → env vars per [VERCEL.md](./VERCEL.md) → Deploy.
+- Pushes to the configured branch re-deploy automatically.
+- `vercel.json` pins region `sin1` (Singapore) and writes security headers.
+- `postinstall` runs `prisma generate` so Prisma types are baked before `next build` runs.
+
+Full walkthrough (Neon prod DB, SMTP setup, custom domain, troubleshooting) lives in [VERCEL.md](./VERCEL.md).
 
 ---
 

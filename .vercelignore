@@ -1,0 +1,28 @@
+# Vercel — Files excluded from upload
+# (parallels `.gitignore`; lets Vercel skip noise that slows uploads)
+
+node_modules
+.next
+.vercel
+.env
+.env.local
+.env.*.local
+
+# Project-specific
+.hermes
+refimages
+
+# Working-doc markdown (kept locally; not deployed)
+BOW_NEXTJS_MIGRATION.md
+Bow-Documentation.md
+PROJECT_MAP.md
+
+# CI / docker helpers
+*.bat
+*.ps1
+
+# Build helpers
+scripts/migrate-neon-region.mjs
+scripts/swap-database-url.mjs
+scripts/migrate.bat
+scripts/migrate.ps1
