@@ -3,6 +3,7 @@
 import { getCurrentUser } from '@/lib/auth/session'
 import { prisma } from '@/lib/auth/prisma'
 import type { BackupData, Job, Template, BudgetCategory, Expense, BudgetGoal, Shift } from '@/types'
+import { BACKUP_SCHEMA_VERSION } from '@/lib/backupSchema'
 
 /**
  * Backup server actions (v6.4).
@@ -27,7 +28,6 @@ export interface BackupBundle {
 }
 
 const CSV_HEADER_LINE = (section: string) => `# section: ${section}`
-export const SCHEMA_VERSION = '6.4.0' as const
 
 async function requireUserId(): Promise<string> {
   const user = await getCurrentUser()
@@ -173,7 +173,7 @@ export async function fetchBackupBundle(): Promise<BackupBundle> {
   for (const r of noteRows) monthNotes[r.monthKey] = r.notes
 
   const data: BackupData = {
-    schemaVersion: SCHEMA_VERSION,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profile: {
       country: 'Japan',
