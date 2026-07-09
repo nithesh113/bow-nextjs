@@ -314,22 +314,26 @@ export async function importData(
   }
 
   // ── replace mode – wipe ─────────────────────────────────
-  if (mode === 'replace') {
-    const existingJobs = await getJobs()
-    await Promise.all(existingJobs.map((j) => serverDeleteJob(j.id).catch(() => null)))
+  // Wipe SEQUENTIALLY (not in parallel) so each delete fully completes
+  // before the next begins. Parallel deletes resolve before the DB has
+  // actually removed the rows, causing P2002 constraint violations when
+  // imports start immediately after.
+    if (mode === 'replace') {
+      const existingJobs = await getJobs()
+      for (const j of existingJobs) await serverDeleteJob(j.id).catch(() => null)
 
-    const existingTemplates = await getTemplates()
-    await Promise.all(existingTemplates.map((t) => serverDeleteTemplate(t.id).catch(() => null)))
+      const existingTemplates = await getTemplates()
+      for (const t of existingTemplates) await serverDeleteTemplate(t.id).catch(() => null)
 
-    const shiftsState = useShiftsStore.getState().shifts
-    await Promise.all(Object.keys(shiftsState).map((dk) => serverDeleteShiftsByDate(dk).catch(() => null)))
+      const shiftsState = useShiftsStore.getState().shifts
+      for (const dk of Object.keys(shiftsState)) await serverDeleteShiftsByDate(dk).catch(() => null)
 
-    const existingGoals = await getBudgetGoals()
-    await Promise.all(existingGoals.map((g) => deleteBudgetGoal(g.id).catch(() => null)))
+      const existingGoals = await getBudgetGoals()
+      for (const g of existingGoals) await deleteBudgetGoal(g.id).catch(() => null)
 
-    const monthKeys = Object.keys(data.expenses ?? {})
-    if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
-  }
+      const monthKeys = Object.keys(data.expenses ?? {})
+      if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
+    }
 
   // ── jobs ─────────────────────────────────────────────────
   let jobsInserted = 0
