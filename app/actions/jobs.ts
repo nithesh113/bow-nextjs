@@ -96,27 +96,28 @@ export async function seedDefaultJobsIfEmpty(): Promise<JobRow[]> {
   if (existing.length > 0) return existing.map(mapJob)
 
   const created = await prisma.userJob.createMany({
-    data: [
-      {
-        id: 'j1',
-        userId,
-        name: "McDonald's",
-        color: '#f59e0b',
-        rate: 1250,
-        nightRate: 1562,
-        sortOrder: 0,
-      },
-      {
-        id: 'j2',
-        userId,
-        name: 'Big Boy',
-        color: '#6366f1',
-        rate: 1300,
-        nightRate: 1700,
-        sortOrder: 1,
-      },
-    ],
-  })
+      data: [
+        {
+          id: 'j1',
+          userId,
+          name: "McDonald's",
+          color: '#f59e0b',
+          rate: 1250,
+          nightRate: 1562,
+          sortOrder: 0,
+        },
+        {
+          id: 'j2',
+          userId,
+          name: 'Big Boy',
+          color: '#6366f1',
+          rate: 1300,
+          nightRate: 1700,
+          sortOrder: 1,
+        },
+      ],
+      skipDuplicates: true, // P2002 if j1/j2 already exist → safe for re-import
+    })
   if (!created || created.count === 0) return []
   revalidatePath('/dashboard')
   const rows = await prisma.userJob.findMany({
