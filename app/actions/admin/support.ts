@@ -58,7 +58,8 @@ export async function adminResendVerification(
 
   const emailRes = await sendVerificationEmail(
     target.email,
-    makeAppUrl(`/verify-email?token=${token}`)
+    makeAppUrl(`/verify-email?token=${token}`),
+    target.id,
   )
   if (!emailRes.success) {
     await prisma.verificationToken.deleteMany({ where: { identifier: target.email } })

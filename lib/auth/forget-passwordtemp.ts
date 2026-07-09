@@ -2,10 +2,13 @@ import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
 export async function sendPasswordResetEmail(
   email: string,
-  resetUrl: string
+  resetUrl: string,
+  userId?: string | null
 ) {
   await sendMail({
     to: email,
+    type: 'password_reset',
+    userId: userId ?? null,
     subject: 'Reset your BOW password',
     html: `
       <div style="background:#0a0c14;padding:40px 20px;font-family:Arial,sans-serif;">

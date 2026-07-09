@@ -39,16 +39,12 @@ model User {
   budgetMonthMetas    UserBudgetMonthMeta[]
   budgetGoals         UserBudgetGoal[]
   adminAuditActions   AdminAuditLog[]      @relation("AdminAuditLogActor")
+  emailLogs           EmailLog[]
 
   @@map("users")
 }
 
-// ── v7.0.0 — Admin audit log ─────────────────────────────────
-// Records every admin-initiated mutation: actor (admin user), action
-// key, optional target resource, and free-form JSON metadata for
-// before/after deltas (role flips, force-logout, etc.). The auditing
-// is performed inside the relevant server actions; this model only
-// stores the resulting line items.
+// ── v7.0.0 — Admin audit log ──────────────────
 model AdminAuditLog {
   id           String   @id @default(uuid()) @db.Uuid
   adminUserId  String   @map("admin_user_id") @db.Uuid
@@ -64,6 +60,35 @@ model AdminAuditLog {
   @@index([createdAt(sort: Desc)], map: "admin_audit_log_created_at_desc_idx")
   @@index([action], map: "admin_audit_log_action_idx")
   @@map("admin_audit_log")
+}
+
+// ── v7.1.0 — Email log (Plan §32) ─────────────
+// Per-row history of every transactional email the app tried to
+// send. Written around lib/auth/smtp.ts:sendMail() so the row is
+// created whether SMTP successed or failed — rows with status='sent'
+// have a providerMessageId; rows with status='failed' have a
+// human-readable error string. Used by /admin/emails + future
+// alerting. No FK to user — emails may target non-users (account
+// creation landing in a Spam folder, etc).
+model EmailLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  userId            String?  @map("user_id") @db.Uuid
+  to                String
+  type              String
+  status            String   // 'sent' | 'failed'
+  providerMessageId String?  @map("provider_message_id")
+  error             String?
+  subject           String?
+  createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  @@index([createdAt(sort: Desc)], map: "email_log_created_at_desc_idx")
+  @@index([to], map: "email_log_to_idx")
+  @@index([status], map: "email_log_status_idx")
+  @@index([type], map: "email_log_type_idx")
+  @@map("email_log")
+  // Optional relation — null for emails to non-users (e.g. bounces
+  // for failed account creations where User row never landed).
+  user User? @relation(fields: [userId], references: [id], onDelete: SetNull)
 }
 
 model VerificationToken {

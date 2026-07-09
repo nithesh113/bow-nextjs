@@ -1,8 +1,10 @@
 import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
-export async function sendWelcomeEmail(email: string, name: string) {
+export async function sendWelcomeEmail(email: string, name: string, userId?: string | null) {
   await sendMail({
     to: email,
+    type: 'welcome',
+    userId: userId ?? null,
     subject: 'Welcome to BOW!',
     html: `
       <div style="font-family:Arial,sans-serif;line-height:1.6;color:#111827;max-width:600px;margin:0 auto;padding:20px;">

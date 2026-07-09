@@ -90,6 +90,7 @@ export default async function AdminLayout({
         {[
           { href: '/admin',          label: '📊 Overview' },
           { href: '/admin/users',    label: '👥 Users' },
+          { href: '/admin/emails',   label: '✉️ Emails' },
           { href: '/admin/audit-log', label: '📜 Audit Log' },
         ].map((t) => (
           <AdminNavLink key={t.href} href={t.href} label={t.label} />

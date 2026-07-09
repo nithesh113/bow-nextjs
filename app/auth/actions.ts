@@ -70,8 +70,8 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
     },
   })
 
-  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`))
-  await sendWelcomeEmail(email, name)
+  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`), user.id)
+  await sendWelcomeEmail(email, name, user.id)
 
   if (!emailRes.success) {
     // Delete the user and token so they can try again
@@ -119,7 +119,7 @@ export async function forgotPasswordAction(_: AuthActionState, formData: FormDat
       },
     })
 
-    await sendPasswordResetEmail(email, makeAppUrl(`/reset-password?token=${token}`))
+    await sendPasswordResetEmail(email, makeAppUrl(`/reset-password?token=${token}`), user.id)
   }
 
   return { success: 'If an account exists, a reset link has been sent.' }
@@ -158,7 +158,7 @@ export async function resetPasswordAction(_: AuthActionState, formData: FormData
     prisma.session.deleteMany({ where: { userId: resetToken.userId } }),
   ])
 
-  await sendPasswordChangedEmail(resetToken.user.email, resetToken.user.name)
+  await sendPasswordChangedEmail(resetToken.user.email, resetToken.user.name, resetToken.userId)
   await createSession(resetToken.userId)
 
   redirect('/dashboard')
@@ -202,7 +202,11 @@ export async function resendVerificationAction(_: AuthActionState, formData: For
     },
   })
 
-  const emailRes = await sendVerificationEmail(email, makeAppUrl(`/verify-email?token=${token}`))
+  const emailRes = await sendVerificationEmail(
+    email,
+    makeAppUrl(`/verify-email?token=${token}`),
+    user.id
+  )
 
   if (!emailRes.success) {
     return { error: `Failed to send email: ${emailRes.error}` }

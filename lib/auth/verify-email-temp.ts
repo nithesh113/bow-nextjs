@@ -2,10 +2,13 @@ import { sendMail, FROM_EMAIL } from '@/lib/auth/smtp'
 
 export async function sendVerificationEmail(
   email: string,
-  verifyUrl: string
+  verifyUrl: string,
+  userId?: string | null
 ) {
   const result = await sendMail({
     to: email,
+    type: 'verification',
+    userId: userId ?? null,
     subject: 'Verify your BOW email',
     html: `
       <div style="background:#0a0c14;padding:40px 20px;font-family:Arial,sans-serif;">

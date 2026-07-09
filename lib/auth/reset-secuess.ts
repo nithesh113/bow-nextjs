@@ -3,10 +3,13 @@ import { appUrl as makeAppUrl } from '@/lib/auth/urls'
 
 export async function sendPasswordChangedEmail(
   email: string,
-  name?: string
+  name?: string,
+  userId?: string | null
 ) {
   await sendMail({
     to: email,
+    type: 'password_changed',
+    userId: userId ?? null,
     subject: 'Your BOW password was changed successfully',
     html: `
       <div style="background:#0a0c14;padding:40px 20px;font-family:Arial,sans-serif;">
