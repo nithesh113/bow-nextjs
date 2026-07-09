@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { notFound } from 'next/navigation'
 import { requireAdmin } from '@/lib/auth/guards'
+import { getCurrentUser } from '@/lib/auth/session'
 import { getUserDetailForAdmin } from '@/app/actions/admin/users'
+import SupportActionsPanel from './SupportActionsPanel'
 
 export const dynamic = 'force-dynamic'
 
@@ -29,6 +31,8 @@ export default async function AdminUserDetailPage({
   const { id } = await Promise.resolve(params)
   const detail = await getUserDetailForAdmin(id)
   if (!detail) notFound()
+  const me = await getCurrentUser()
+  const isSelf = me?.id === detail.id
 
   const initials = detail.name
     .split(' ')
@@ -119,21 +123,16 @@ export default async function AdminUserDetailPage({
         </CardGrid>
       </Section>
 
-      {/* Support actions placeholder — wired in phase 5. We
-          intentionally render an empty section now so the detail
-          view feels complete-but-disabled rather than 404-ish. */}
+      {/* Support actions — wired to the server actions in
+          app/actions/admin/support.ts. Each click fires a server
+          action that audits itself before returning. */}
       <Section title="Support actions">
-        <div style={{
-          padding: 14, borderRadius: 10,
-          background: 'rgba(255,255,255,0.03)',
-          border: '1px dashed var(--border)',
-          color: 'var(--muted)',
-          fontSize: 12, lineHeight: 1.6,
-        }}>
-          Resend verification, force logout, and role-flip controls
-          land in the next phase. Open this page for the read-only
-          view until then.
-        </div>
+        <SupportActionsPanel
+          targetUserId={detail.id}
+          targetIsVerified={!!detail.emailVerified}
+          targetRole={detail.role}
+          isSelf={isSelf}
+        />
       </Section>
     </div>
   )
