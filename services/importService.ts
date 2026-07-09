@@ -179,6 +179,26 @@ function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, any[
       }
     }
   }
+
+  // Dedupe inside each date array: keep only the first occurrence
+  // of (jobId, start, end). v6.3 backups frequently include the same
+  // day-row multiple times when localStorage's last-write-wins logic
+  // failed (e.g. user re-saved the same file). Inserting all of them
+  // creates false duplicates in the calendar; deduping after
+  // normalise keeps the earliest captured shift per (job, slot).
+  for (const dk of Object.keys(out)) {
+    const seen = new Set<string>()
+    const dedup: any[] = []
+    for (const row of out[dk] ?? []) {
+      if (!looksLikeShiftRow(row)) continue
+      const sig = `${row.jobId}\u0001${row.start}\u0001${row.end}`
+      if (seen.has(sig)) continue
+      seen.add(sig)
+      dedup.push(row)
+    }
+    out[dk] = dedup
+  }
+
   return out
 }
 
