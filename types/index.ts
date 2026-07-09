@@ -126,7 +126,15 @@ export interface BackupEntry {
 export interface BackupData {
   schemaVersion?: '6.3.0' | '6.4.0'            // absence ⇒ treated as 6.3.0
   exportedAt: string
-  profile: { country: string; weeklyLimit: number; currency: string }
+  profile: {
+    country: string
+    weeklyLimit: number
+    currency: string
+    /** Optional school-fee target (added in v6.4 to make the import flow
+     *  honest about restoring user prefs). Older backups omit it; the
+     *  importer falls back to the default ¥840,000 when missing. */
+    schoolFee?: number
+  }
   jobs: Job[]
   /** v6.3 legacy: per-(day, job) hours cache. Hours are derived from
    *  `UserShift` rows in v6.4, so `entries` is an empty array on export

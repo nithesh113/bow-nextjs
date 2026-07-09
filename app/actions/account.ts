@@ -8,7 +8,7 @@ import { appUrl as makeAppUrl } from '@/lib/auth/urls'
 
 export async function updateAccount(data: { name: string; email: string; currency: string; location: string; schoolFee: number }) {
   const user = await getCurrentUser()
-  
+
   if (!user) {
     return { success: false, error: 'Not authenticated' }
   }
@@ -28,6 +28,40 @@ export async function updateAccount(data: { name: string; email: string; currenc
   } catch (error) {
     console.error('Error updating account:', error)
     return { success: false, error: 'Failed to update account. Email might already be taken.' }
+  }
+}
+
+/**
+ * Apply the profile-level prefs from a backup bundle without touching
+ * identity fields. Import flows call this so the receiving user gets the
+ * source device's currency/location/schoolFee target but NOT their name
+ * or email — those are intentionally per-account.
+ */
+export async function applyProfilePrefs(data: {
+  currency?: string
+  location?: string
+  schoolFee?: number
+} = {}): Promise<{ success: boolean; error?: string }> {
+  const user = await getCurrentUser()
+  if (!user) return { success: false, error: 'Not authenticated' }
+  try {
+    const patch: Record<string, unknown> = {}
+    if (typeof data.currency === 'string' && data.currency.trim().length > 0) {
+      patch.currency = data.currency.trim()
+    }
+    if (typeof data.location === 'string' && data.location.trim().length > 0) {
+      patch.location = data.location.trim()
+    }
+    if (Number.isFinite(data.schoolFee) && (data.schoolFee as number) > 0) {
+      patch.schoolFee = data.schoolFee as number
+    }
+    if (Object.keys(patch).length === 0) return { success: true }
+    await prisma.user.update({ where: { id: user.id }, data: patch })
+    revalidatePath('/dashboard')
+    return { success: true }
+  } catch (error) {
+    console.error('Error applying profile prefs:', error)
+    return { success: false, error: 'Failed to apply profile preferences.' }
   }
 }
 

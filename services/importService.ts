@@ -1,16 +1,15 @@
 import type { BackupData } from '@/types'
 import { csvSectionsToBackupData } from '@/lib/csv'
+import { applyProfilePrefs } from '@/app/actions/account'
 import {
   getJobs,
   createJob as serverCreateJob,
-  updateJob as serverUpdateJob,
   deleteJob as serverDeleteJob,
   seedDefaultJobsIfEmpty,
 } from '@/app/actions/jobs'
 import {
   getTemplates,
   createTemplate as serverCreateTemplate,
-  updateTemplate as serverUpdateTemplate,
   deleteTemplate as serverDeleteTemplate,
   type TemplateData,
 } from '@/app/actions/templates'
@@ -21,6 +20,7 @@ import {
 } from '@/app/actions/shifts'
 import {
   getCategories,
+  getExpenses,
   createCategory,
   updateCategory,
   replaceMonthsExpenses,
@@ -28,7 +28,6 @@ import {
 } from '@/app/actions/expenses'
 import {
   createBudgetGoal,
-  updateBudgetGoal,
   deleteBudgetGoal,
   setBudgetMonthNotes,
   getBudgetGoals,
@@ -68,6 +67,38 @@ function looksLikeCsv(text: string): boolean {
     .find((l) => l && !l.startsWith('{') && !l.startsWith('//'))
   if (!first) return false
   return first.startsWith('# section:') || first.split(',').length >= 2
+}
+
+/**
+ * Canonical name normaliser so user-supplied category names match across
+ * export→import boundaries through this codebase. Both sides of the
+ * cross-device transfer apply the same function; without this, "Food"
+ * (U+0065) and "Fooԁ" (Cyrillic homoglyph), or NFC-vs-NFD, would silently
+ * skip the lookup and lose the imported expense.
+ */
+function normalizeName(input: string): string {
+  return (input ?? '').normalize('NFC').trim().toLowerCase()
+}
+
+/**
+ * Stable signature for an expense row, used to dedupe against the user's
+ * existing DB rows in merge mode. The shape intentionally matches the
+ * documented contract on `app/actions/expenses.ts#createExpensesBulk`:
+ * `(date, categoryId, amount, note)`. Two expenses with the same four
+ * fields are treated as duplicates.
+ */
+function dedupSignature(input: {
+  categoryId: string
+  amount: number
+  date: string
+  note?: string
+}): string {
+  return [
+    input.date ?? '',
+    input.categoryId ?? '',
+    Number.isFinite(input.amount) ? input.amount : 0,
+    input.note ?? '',
+  ].join('\u0001')
 }
 
 /**
@@ -130,6 +161,24 @@ export async function importData(
 
   if (!data.jobs) throw new Error('Invalid backup file: missing jobs')
 
+  // ── profile prefs (best-effort) ────────────────────────
+  // Apply portable profile preferences early so downstream store
+  // refreshes pick up the new currency/location/schoolFee. Identity
+  // fields (name, email) are not touched on purpose — those are
+  // per-account, not per-device.
+  if (data.profile) {
+    try {
+      await applyProfilePrefs({
+        currency: data.profile.currency,
+        location: data.profile.country,
+        schoolFee: data.profile.schoolFee,
+      })
+    } catch (err) {
+      // Non-fatal: log and continue so the rest of the import still runs.
+      console.warn('[importData] applyProfilePrefs failed', err)
+    }
+  }
+
   // ── replace mode: wipe first (scoped per domain) ────────
   if (mode === 'replace') {
     const existingJobs = await getJobs()
@@ -159,32 +208,22 @@ export async function importData(
   }
 
   // ── jobs ────────────────────────────────────────────────
+  // Both merge and replace funnel through the same try/create path:
+  // `serverCreateJob` mints a fresh id when the row's id is missing, and
+  // retries on Prisma P2002 unique-id collision. Update semantics add no
+  // value because the DB `id` is already unique per user, and a missing
+  // row in merge mode previously caused an unhandled throw that aborted
+  // the entire import.
   let jobsInserted = 0
   for (const j of data.jobs ?? []) {
     try {
-      if (mode === 'merge') {
-        await serverUpdateJob(j.id, {
-          name: j.name,
-          color: j.color,
-          rate: j.rate,
-          nightRate: j.nightRate,
-        })
-        await serverCreateJob({
-          id: j.id,
-          name: j.name,
-          color: j.color,
-          rate: j.rate,
-          nightRate: j.nightRate,
-        }).catch(() => null)
-      } else {
-        await serverCreateJob({
-          id: j.id,
-          name: j.name,
-          color: j.color,
-          rate: j.rate,
-          nightRate: j.nightRate,
-        })
-      }
+      await serverCreateJob({
+        id: j.id,
+        name: j.name,
+        color: j.color,
+        rate: j.rate,
+        nightRate: j.nightRate,
+      })
       jobsInserted++
     } catch {
       // skip
@@ -192,6 +231,11 @@ export async function importData(
   }
 
   // ── templates ────────────────────────────────────────────
+  // Same idempotent try/create approach as for jobs above. `Template.id`
+  // is the DB primary key (it's also stored as `id String @id` in the
+  // schema), so re-creating with the same id surfaces as a P2002 and the
+  // server action retries with a fresh client id. Merge vs replace
+  // behaves identically at the row level for this shape.
   let templatesInserted = 0
   for (const t of data.templates ?? []) {
     const tData: TemplateData = {
@@ -203,12 +247,7 @@ export async function importData(
       workDetails: (t as any).workDetails ?? null,
     }
     try {
-      if (mode === 'merge' && t.id) {
-        await serverUpdateTemplate(t.id, tData)
-        await serverCreateTemplate(tData)
-      } else {
-        await serverCreateTemplate(tData)
-      }
+      await serverCreateTemplate(tData)
       templatesInserted++
     } catch {
       // skip
@@ -237,6 +276,11 @@ export async function importData(
         actualLogin: s.actualLogin ?? null,
         actualLogout: s.actualLogout ?? null,
         actualBreaks: ((s as any).actualBreaks as any) ?? null,
+        // Preserve the per-shift metadata captured by v6.4 backups so that
+        // re-import round-trips without losing workDetails/templateId/source.
+        workDetails: ((s as any).workDetails as any) ?? null,
+        templateId: ((s as any).templateId as any) ?? undefined,
+        source: ((s as any).source as any) ?? undefined,
       })
     }
   }
@@ -265,15 +309,15 @@ export async function importData(
       const list = pass === 0 ? parentRows : childRows
       // Re-read after each pass so newly-created categories are visible.
       const existing = await getCategories()
-      const byName = new Map(existing.map((c) => [c.name.toLowerCase(), c]))
+      const byName = new Map(existing.map((c) => [normalizeName(c.name), c]))
       for (const c of list) {
         const parentName = (c as any).parentName as string | undefined
         let parentId: string | undefined
         if (parentName) {
-          parentId = byName.get(parentName.trim().toLowerCase())?.id
+          parentId = byName.get(normalizeName(parentName))?.id
         }
         try {
-          const existingHit = byName.get(c.name.trim().toLowerCase())
+          const existingHit = byName.get(normalizeName(c.name))
           if (existingHit && mode === 'merge') {
             await updateCategory(existingHit.id, c.name, c.icon, c.budget).catch(
               () => null
@@ -294,7 +338,7 @@ export async function importData(
   if (data.expenses && Object.keys(data.expenses).length > 0) {
     const liveCats = await getCategories()
     const lookupByName = new Map(
-      liveCats.map((c) => [c.name.trim().toLowerCase(), c.id])
+      liveCats.map((c) => [normalizeName(c.name), c.id])
     )
 
     const bulkInputs: Array<{
@@ -305,12 +349,46 @@ export async function importData(
       note?: string
     }> = []
 
-    for (const [, rows] of Object.entries(data.expenses)) {
+    // Build the set of expenses that already exist in the DB so we can
+    // skip duplicates in merge mode. We hit the DB once per month, which
+    // is the same granularity the receipt page uses; in replace mode the
+    // wipe step already cleared those rows so the check passes trivially.
+    const liveExpensesByMonth = new Map<string, Set<string>>()
+    if (mode === 'merge') {
+      for (const mk of Object.keys(data.expenses)) {
+        try {
+          const existing = await getExpenses(mk)
+          const sigs = new Set<string>(
+            (existing ?? []).map((e) =>
+              dedupSignature({
+                categoryId: e.categoryId,
+                amount: Number(e.amount),
+                date: typeof e.date === 'string' ? e.date : String(e.date),
+                note: e.note ?? '',
+              })
+            )
+          )
+          liveExpensesByMonth.set(mk, sigs)
+        } catch {
+          // ignore — fallback to no-dedup for that month
+        }
+      }
+    }
+
+    for (const [monthKey, rows] of Object.entries(data.expenses)) {
+      const monthSigs = liveExpensesByMonth.get(monthKey)
       for (const e of rows ?? []) {
         if (!e || e.amount <= 0) continue
-        const catName = ((e as any).categoryName ?? '').trim().toLowerCase()
+        const catName = normalizeName((e as any).categoryName ?? '')
         const catId = lookupByName.get(catName) ?? ''
         if (!catId) continue
+        const sig = dedupSignature({
+          categoryId: catId,
+          amount: Number(e.amount),
+          date: e.date,
+          note: e.note ?? '',
+        })
+        if (mode === 'merge' && monthSigs?.has(sig)) continue
         bulkInputs.push({
           categoryId: catId,
           amount: Number(e.amount),
@@ -333,34 +411,26 @@ export async function importData(
   }
 
   // ── goals ────────────────────────────────────────────────
+  // Same idempotent try/create approach as for jobs/templates above.
+  // `UserBudgetGoal.id` is the DB primary key (see prisma/schema.prisma),
+  // so re-creating with the same id surfaces as P2002 and the server
+  // action mints a fresh id. `updateBudgetGoal` is intentionally not
+  // called here — it would throw `Record not found` for any goal id not
+  // already present in the receiving user's DB, aborting the import.
   let goalsInserted = 0
   if (data.goals?.length) {
-    const existingGoals = await getBudgetGoals()
-    const byId = new Map(existingGoals.map((g) => [g.id, g]))
     for (const g of data.goals) {
       try {
-        if (mode === 'merge' && byId.has(g.id)) {
-          // Update with full payload so updates hit priority/percentage/etc.
-          await updateBudgetGoal(g.id, {
-            name: g.name,
-            deadline: g.deadline,
-            target: g.target,
-            percentage: g.percentage ?? 0,
-            priority: g.priority ?? 0,
-            monthlyProgress: g.monthlyProgress,
-          })
-        } else {
-          await createBudgetGoal({
-            id: g.id,
-            name: g.name,
-            deadline: g.deadline,
-            target: g.target,
-            percentage: g.percentage ?? 0,
-            priority: g.priority ?? 0,
-            createdMonth: g.createdMonth,
-            monthlyProgress: g.monthlyProgress,
-          })
-        }
+        await createBudgetGoal({
+          id: g.id,
+          name: g.name,
+          deadline: g.deadline,
+          target: g.target,
+          percentage: g.percentage ?? 0,
+          priority: g.priority ?? 0,
+          createdMonth: g.createdMonth,
+          monthlyProgress: g.monthlyProgress,
+        })
         goalsInserted++
       } catch {
         // skip

@@ -50,7 +50,15 @@ export async function fetchBackupBundle(): Promise<BackupBundle> {
   ] = await Promise.all([
     prisma.user.findUnique({
       where: { id: userId },
-      select: { actualTimesEnabled: true },
+      select: {
+        actualTimesEnabled: true,
+        currency: true,
+        location: true,
+        schoolFee: true,
+        // Name + email intentionally NOT exported: profiles are per-account on
+        // the receiving device. Only portable prefs (currency / location /
+        // schoolFee) make the round-trip.
+      },
     }),
     prisma.userJob.findMany({ where: { userId }, orderBy: { sortOrder: 'asc' } }),
     prisma.userTemplate.findMany({
@@ -106,6 +114,12 @@ export async function fetchBackupBundle(): Promise<BackupBundle> {
       actualLogin: r.actualLogin ?? undefined,
       actualLogout: r.actualLogout ?? undefined,
       actualBreaks: (r.actualBreaks as any) ?? undefined,
+      // v6.4 backup now preserves the DB-only fields so the round-trip
+      // doesn't silently drop per-shift notes, the template that produced
+      // the shift, or its bookkeeping source.
+      workDetails: (r.workDetails as any) ?? undefined,
+      templateId: r.templateId ?? undefined,
+      source: r.source ?? undefined,
     } as any)
   }
 
@@ -176,9 +190,12 @@ export async function fetchBackupBundle(): Promise<BackupBundle> {
     schemaVersion: BACKUP_SCHEMA_VERSION,
     exportedAt: new Date().toISOString(),
     profile: {
-      country: 'Japan',
+      country: user?.location ?? 'Japan',
       weeklyLimit: 28,
-      currency: 'JPY',
+      currency: user?.currency ?? 'JPY',
+      // School-fee target is also user-local — keep it on the bundle so
+      // the import flow can restore it on a freshly-provisioned device.
+      schoolFee: user?.schoolFee ?? 840000,
     },
     jobs,
     templates,
@@ -240,11 +257,13 @@ function buildCsvText(data: BackupData): string {
   }
   parts.push('')
 
-  // Shifts ── flattened, one row per shift. The global `Shift` interface
-  // doesn't carry `workDetails` or `source`, so those columns are dropped
-  // here (they're user-shift DB columns not exposed in the client type).
+  // Shifts ── flattened, one row per shift. v6.4 backup retains the
+  // per-shift DB metadata (workDetails/templateId/source) so re-import on
+  // another device round-trips without silently losing that context.
   parts.push(CSV_HEADER_LINE('shifts'))
-  parts.push('date,jobId,start,end,actualLogin,actualLogout,actualBreaksJson')
+  parts.push(
+    'date,jobId,start,end,actualLogin,actualLogout,actualBreaksJson,workDetailsJson,templateId,source'
+  )
   const shifts = data.shifts ?? {}
   for (const dk of Object.keys(shifts)) {
     for (const s of shifts[dk] ?? []) {
@@ -257,6 +276,9 @@ function buildCsvText(data: BackupData): string {
           s.actualLogin ?? '',
           s.actualLogout ?? '',
           JSON.stringify((s as any).actualBreaks ?? null),
+          JSON.stringify((s as any).workDetails ?? null),
+          (s as any).templateId ?? '',
+          (s as any).source ?? '',
         ]
           .map(csvEscape)
           .join(',')

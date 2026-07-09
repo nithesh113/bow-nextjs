@@ -164,15 +164,17 @@ export function csvSectionsToBackupData(text: string): BackupData {
   const get = (name: string) => sections.find((s) => s.section === name)
 
   // Profile (single row)
+  // Header order on the wire is: schemaVersion,exportedAt,country,weeklyLimit,currency
   const profile = get('profile')
   if (profile && profile.rows[0]) {
     const cells = profile.rows[0]
+    out.schemaVersion = (cells[0] as any) || '6.4.0'
+    out.exportedAt = cells[1] || new Date().toISOString()
     out.profile = {
-      country: cells[0] ?? 'Japan',
-      weeklyLimit: Number(cells[1] ?? 28),
-      currency: cells[2] ?? 'JPY',
+      country: cells[2] ?? 'Japan',
+      weeklyLimit: Number(cells[3] ?? 28),
+      currency: cells[4] ?? 'JPY',
     }
-    out.schemaVersion = (cells[3] as any) || '6.4.0'
   }
 
   // Jobs
@@ -207,13 +209,20 @@ export function csvSectionsToBackupData(text: string): BackupData {
   }
 
   // Shifts
+  // Header columns (zero-indexed): 0=date, 1=jobId, 2=start, 3=end,
+  //   4=actualLogin, 5=actualLogout, 6=actualBreaksJson,
+  //   7=workDetailsJson, 8=templateId, 9=source
+  // Older v6.4 backups only have columns 0-6; extra columns after that
+  // are simply absent and resolve to undefined through `row[8]`/`row[9]`.
   const shiftsMap: Record<string, any[]> = {}
   for (const row of get('shifts')?.rows ?? []) {
     if (!row[0]) continue
     const dk = row[0]
     let actualBreaks: any = null
     try { actualBreaks = JSON.parse(row[6] || 'null') } catch {}
-    ;(shiftsMap[dk] = shiftsMap[dk] || []).push({
+    let workDetails: any = null
+    try { workDetails = JSON.parse(row[7] || 'null') } catch {}
+    const shift: any = {
       jobId: row[1],
       start: row[2] ?? '',
       end: row[3] ?? '',
@@ -221,7 +230,11 @@ export function csvSectionsToBackupData(text: string): BackupData {
       actualLogin: row[4] || undefined,
       actualLogout: row[5] || undefined,
       actualBreaks,
-    })
+      workDetails: workDetails ?? undefined,
+    }
+    if (row[8]) shift.templateId = row[8]
+    if (row[9]) shift.source = row[9]
+    ;(shiftsMap[dk] = shiftsMap[dk] || []).push(shift)
   }
   out.shifts = shiftsMap
 
