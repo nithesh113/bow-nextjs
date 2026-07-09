@@ -5,7 +5,6 @@ import {
   getJobs,
   createJob as serverCreateJob,
   deleteJob as serverDeleteJob,
-  seedDefaultJobsIfEmpty,
 } from '@/app/actions/jobs'
 import {
   getTemplates,
@@ -202,9 +201,16 @@ export async function importData(
       await replaceMonthsExpenses(monthKeysFromBackup).catch(() => null)
     }
 
-    if ((data.jobs?.length ?? 0) === 0) {
-      await seedDefaultJobsIfEmpty()
-    }
+    // Don't seed defaults here. The post-import empty-job-list is
+    // the user's exported: data.jobs=[] says so. AppShell's session
+    // hook (`seedJobs()`) will seed defaults on the next login if
+    // the user really wants them — that path is idempotent and safe.
+    //
+    // Seeding here previously caused a P2002 unique-id violation:
+    // the wipe runs `Promise.all(deleteMany)` then this branch's
+    // findMany-gated createMany — racing deletes that hadn't yet
+    // committed, getting `j1` from a leftover row and blowing up.
+    // Removing the call is the only race-free fix.
   }
 
   // ── jobs ────────────────────────────────────────────────
