@@ -62,6 +62,13 @@ export default function BackupPanel() {
       if (result.warnings.length > 0) {
         toast.warning(result.warnings.join('; '))
       }
+      if (result.failures && result.failures.length > 0) {
+        // Cap at 5 to keep the toast readable — print the rest in a follow-up.
+        const head = result.failures.slice(0, 5)
+        const overflow = result.failures.length - head.length
+        const suffix = overflow > 0 ? ` …and ${overflow} more` : ''
+        toast.error(`Skipped (${result.failures.length}): ${head.join(' | ')}${suffix}`)
+      }
     } catch (err) {
       toast.error((err as Error).message || 'Import failed')
       close()
