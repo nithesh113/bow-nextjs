@@ -2,7 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "nextjs",
   "version": 2,
-  "buildCommand": "prisma generate && prisma db push --skip-generate --accept-data-loss && next build",
+  "buildCommand": "prisma generate && prisma migrate deploy && next build",
   "installCommand": "npm install --legacy-peer-deps",
   "regions": ["sin1"],
   "headers": [
