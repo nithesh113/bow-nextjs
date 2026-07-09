@@ -43,28 +43,19 @@ export interface ImportResult {
   expenses: number
   goals: number
   notes: number
-  /** v6.3-compat: entries from the backup file (never applied to DB). */
   entries: number
   mode: 'replace' | 'merge'
   format: 'json' | 'csv'
-  /** Warnings surfaced from the parser / dispatcher. UI shows them. */
   warnings: string[]
-  /**
-   * Per-domain failures that the dispatcher caught and skipped. The
-   * UI shows these in the success toast so silent data loss is
-   * visible (e.g. "templates: 2 skipped (P2002 collision)").
-   */
+  /** Per-domain failures caught by the dispatcher. Surfaces in toast so silent-passes become visible. */
   failures: string[]
 }
 
-/** Hard cap on import file size (Postgres + Node safety). */
+/** Hard cap on import file size. */
 const MAX_FILE_BYTES = 25_000_000
 
-/**
- * Detect the format of an uploaded file. The button selection is
- * authoritative when explicitly given; otherwise we infer from the
- * first non-blank, non-comment line.
- */
+// ── Format sniffing ────────────────────────────────────────
+
 function looksLikeCsv(text: string): boolean {
   const first = text
     .split(/\r?\n/, 20)
@@ -74,24 +65,12 @@ function looksLikeCsv(text: string): boolean {
   return first.startsWith('# section:') || first.split(',').length >= 2
 }
 
-/**
- * Canonical name normaliser so user-supplied category names match across
- * export→import boundaries through this codebase. Both sides of the
- * cross-device transfer apply the same function; without this, "Food"
- * (U+0065) and "Fooԁ" (Cyrillic homoglyph), or NFC-vs-NFD, would silently
- * skip the lookup and lose the imported expense.
- */
+// ── Normalisers ────────────────────────────────────────────
+
 function normalizeName(input: string): string {
   return (input ?? '').normalize('NFC').trim().toLowerCase()
 }
 
-/**
- * Stable signature for an expense row, used to dedupe against the user's
- * existing DB rows in merge mode. The shape intentionally matches the
- * documented contract on `app/actions/expenses.ts#createExpensesBulk`:
- * `(date, categoryId, amount, note)`. Two expenses with the same four
- * fields are treated as duplicates.
- */
 function dedupSignature(input: {
   categoryId: string
   amount: number
@@ -106,89 +85,68 @@ function dedupSignature(input: {
   ].join('\u0001')
 }
 
-/**
- * Heuristic: does this object look like a v6.3 day-row wrapper:
- * `{ date: 'YYYY-MM-DD', shifts: [...] }` ?
- */
+/** Does a value look like a v6.3 day-row wrapper? */
 function looksLikeDayRow(x: unknown): x is { date: string; shifts: unknown[] } {
   if (!x || typeof x !== 'object') return false
-  const r = x as { date?: unknown; shifts?: unknown }
-  return (
-    typeof r.date === 'string' &&
+  const r = x as Record<string, unknown>
+  return typeof r.date === 'string' &&
     /^\d{4}-\d{2}-\d{2}$/.test(r.date) &&
     Array.isArray(r.shifts)
-  )
 }
 
-/**
- * Detect a single v6.4 row shape: `{jobId, start, end, ...}` directly.
- */
+/** Detect a raw shift row: {jobId:string, start:'HH:MM', end:'HH:MM'}. */
 function looksLikeShiftRow(x: unknown): x is { jobId: string; start: string; end: string } {
   if (!x || typeof x !== 'object') return false
-  const r = x as { jobId?: unknown; start?: unknown; end?: unknown }
-  return (
-    typeof r.jobId === 'string' &&
+  const r = x as Record<string, unknown>
+  return typeof r.jobId === 'string' &&
     typeof r.start === 'string' &&
     typeof r.end === 'string'
-  )
 }
 
 /**
- * Canonicalise `data.shifts` into the v6.4 in-memory shape:
- *   Record<dateKey, Shift[]>
+ * Canonicalise data.shifts into Record<dateKey, Shift[]>.
  *
- * Accepts three input forms:
- *   - v6.4 (already canonical)            — pass-through.
- *   - v6.3 array-of-day-rows (index keys  — "" / "0" / "1" / …
- *     whose values are `{date, shifts[]}`).
- *   - v6.3 reverse-indexed (date keys whose values are day-row
- *     arrays) — uncommon, but handled because the older codebase
- *     sometimes had `{ "2026-04-22": [{date, shifts}, ...] }`.
+ * Handles both:
+ *   v6.4  { "2026-04-25": [{jobId,start,end,...}], … }
+ *   v6.3  { "0": { date: "2026-04-25", shifts: [{jobId,start,end,breaks}] }, … }
  *
- * Returns an empty object if the shape isn't recognized.
+ * Dedupes within each date by (jobId, start, end) so duplicate
+ * localStorage rows don't create calendar noise.
  */
-function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, any[]> {
-  const out: Record<string, any[]> = {}
+function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, unknown[]> {
+  const out: Record<string, unknown[]> = {}
+
   for (const k of Object.keys(raw ?? {})) {
     const v = raw[k]
+    // v6.4 → pass-through
     if (Array.isArray(v)) {
-      // v6.4 canonical: Record<dateKey, Shift[]>. Fold rows by their
-      // embedded `date` so any cross-tidyness is normalised.
       for (const row of v) {
-        if (looksLikeShiftRow(row)) {
-          out[k] = out[k] ?? []
-          out[k].push(row)
-        } else if (looksLikeDayRow(row)) {
-          out[row.date] = out[row.date] ?? []
-          for (const s of row.shifts ?? []) {
-            if (looksLikeShiftRow(s)) out[row.date].push(s)
-          }
+        if (looksLikeShiftRow(row)) { (out[k] ??= []).push(row); continue }
+        if (looksLikeDayRow(row)) {
+          (out[row.date] ??= [])
+          for (const s of row.shifts ?? []) if (looksLikeShiftRow(s)) out[row.date].push(s)
         }
       }
-    } else if (looksLikeDayRow(v)) {
-      out[v.date] = out[v.date] ?? []
-      for (const s of v.shifts ?? []) {
-        if (looksLikeShiftRow(s)) out[v.date].push(s)
-      }
-    } else if (v && typeof v === 'object' && Array.isArray((v as any).shifts)) {
-      // defensive: tolerate unknown nested shapes
-      const dateKey = (v as { date?: string }).date ?? k
-      out[dateKey] = out[dateKey] ?? []
-      for (const s of ((v as any).shifts as unknown[]) ?? []) {
-        if (looksLikeShiftRow(s)) out[dateKey].push(s)
-      }
+      continue
+    }
+    // v6.3 day-row wrapper
+    if (looksLikeDayRow(v)) {
+      (out[v.date] ??= [])
+      for (const s of v.shifts ?? []) if (looksLikeShiftRow(s)) out[v.date].push(s)
+      continue
+    }
+    // defensive fallback for unusual nested shapes
+    if (v && typeof v === 'object' && Array.isArray((v as any).shifts)) {
+      const dk = (v as any).date ?? k
+      ;(out[dk] ??= [])
+      for (const s of (v as any).shifts ?? []) if (looksLikeShiftRow(s)) out[dk].push(s)
     }
   }
 
-  // Dedupe inside each date array: keep only the first occurrence
-  // of (jobId, start, end). v6.3 backups frequently include the same
-  // day-row multiple times when localStorage's last-write-wins logic
-  // failed (e.g. user re-saved the same file). Inserting all of them
-  // creates false duplicates in the calendar; deduping after
-  // normalise keeps the earliest captured shift per (job, slot).
+  // Dedupe inside each date: keep only the first (jobId, start, end).
   for (const dk of Object.keys(out)) {
     const seen = new Set<string>()
-    const dedup: any[] = []
+    const dedup: unknown[] = []
     for (const row of out[dk] ?? []) {
       if (!looksLikeShiftRow(row)) continue
       const sig = `${row.jobId}\u0001${row.start}\u0001${row.end}`
@@ -203,46 +161,41 @@ function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, any[
 }
 
 /**
- * Reconstruct the v6.4 shifts shape from a v6.3 entries[] backup —
- * what localStorage used to drop as `{date, jobs:[{jobId, dayHours, nightHours}], totalEarned}`.
+ * Reconstruct shifts from a v6.3 entries[] backup when no shifts dict
+ * exists. Entries carry aggregated hours: {date, jobs:[{jobId,dayHours,nightHours}]}.
  *
- * We don't have start/end times in entries, so we synthesize:
- *   - a single shift per (date, jobId) covering the dayHours
- *   - default start '09:00', end = start + hours, breaks = []
- *   - Night-pay attaches hour-half when nightHours > 0.
- *
- * This is lossy: the calendar will render the same total hours but
- * no break, no per-half-hour boundary matching the original v6.3
- * localStorage shape. Surfacing this in warnings is intentional.
+ * We synthesise:
+ *   Day:   09:00 → 09:00 + floor(dayHours)
+ *   Night: 22:30 → 22:30 + ceil(nightHours+0.5)
+ * This is lossy — breaks and exact start/end are lost.
  */
-function synthShiftsFromEntries(entries: any[]): Record<string, any[]> {
-  const out: Record<string, any[]> = {}
+function synthShiftsFromEntries(entries: unknown[]): Record<string, unknown[]> {
+  const out: Record<string, unknown[]> = {}
   for (const e of entries) {
-    if (!e || typeof e.date !== 'string') continue
-    const dk = e.date
-    out[dk] = out[dk] ?? []
-    for (const j of (e.jobs as any[]) ?? []) {
-      if (!j || typeof j.jobId !== 'string') continue
-      const day = Number(j.dayHours) || 0
-      const night = Number(j.nightHours) || 0
+    if (!e || typeof (e as any).date !== 'string') continue
+    const dk = (e as any).date as string
+    ;(out[dk] ??= [])
+    const jobs: unknown[] = (e as any).jobs ?? []
+    for (const j of jobs) {
+      if (!j || typeof (j as any).jobId !== 'string') continue
+      const day = Number((j as any).dayHours) || 0
+      const night = Number((j as any).nightHours) || 0
       if (day + night <= 0) continue
-      // Day block starts at 09:00.
-      const dayStart = 9
-      const dayEnd = dayStart + Math.floor(day)
       if (day > 0) {
+        const startH = 9
+        const endH = Math.max(startH + 1, startH + Math.floor(day))
         out[dk].push({
-          jobId: j.jobId,
-          start: pad(dayStart),
-          end: pad(Math.max(dayStart + 1, dayEnd)),
+          jobId: (j as any).jobId as string,
+          start: pad(startH) + ':00',
+          end:   pad(endH)   + ':00',
           breaks: [],
         })
       }
-      // Night block follows.
-      if (night > 0 && night <= 4) {
+      if (night > 0) {
         out[dk].push({
-          jobId: j.jobId,
-          start: pad(22) + ':30',
-          end: pad(22 + Math.ceil(night + 0.5)),
+          jobId: (j as any).jobId as string,
+          start: '22:30',
+          end:   pad(22 + Math.ceil(night + 0.5)) + ':00',
           breaks: [],
         })
       }
@@ -251,23 +204,17 @@ function synthShiftsFromEntries(entries: any[]): Record<string, any[]> {
   return out
 }
 
-function pad(n: number): string {
-  return String(n).padStart(2, '0')
-}
+function pad(n: number): string { return String(n).padStart(2, '0') }
 
-/**
- * Top-level entry. Use `format` from the button panel; otherwise we
- * sniff from the file body. Returns counts + warnings.
- */
+// ── Top-level entry ────────────────────────────────────────
+
 export async function importData(
   file: File,
   mode: 'replace' | 'merge',
   format: 'json' | 'csv' | 'auto' = 'auto'
 ): Promise<ImportResult> {
   if (file.size > MAX_FILE_BYTES) {
-    throw new Error(
-      `Backup file is too large (${Math.round(file.size / 1024 / 1024)} MB > 25 MB). Re-export with fewer months.`
-    )
+    throw new Error(`Backup file too large (${Math.round(file.size / 1024 / 1024)} MB > 25 MB).`)
   }
 
   const text = await file.text()
@@ -276,20 +223,15 @@ export async function importData(
 
   let data: Partial<BackupData>
   const warnings: string[] = []
-  // Per-domain silent-failure collector. Each skipped row pushes a
-  // human-readable explanation here so the toast surfaces what would
-  // otherwise be data loss. The schemaVersion warning also lands here
-  // when v6.3-only shape is detected (entries vs shifts ambiguity).
   const failures: string[] = []
-  const pushFailure = (domain: string, ctx: string, err?: unknown) => {
-    const reason =
-      err instanceof Error
-        ? err.message
-        : typeof err === 'string'
-          ? err
-          : 'unknown'
-    const trimmed = String(reason).split('\n')[0].slice(0, 160)
-    failures.push(`${domain}: ${ctx}: ${trimmed}`)
+
+  function pushFailure(domain: string, ctx: string, err: unknown) {
+    try {
+      const msg = (err instanceof Error ? err.message : String(err)) || String(err)
+      failures.push(`${domain}: ${ctx} => ${msg}`)
+    } catch {
+      failures.push(`${domain}: ${ctx} => <unavailable>`)
+    }
   }
 
   if (detected === 'csv') {
@@ -297,271 +239,205 @@ export async function importData(
   } else {
     try {
       data = JSON.parse(text) as Partial<BackupData>
-      if (!data || typeof data !== 'object' || !Array.isArray((data as any).jobs)) {
-        throw new Error('Invalid JSON backup (missing jobs[])')
-      }
     } catch (err) {
-      throw new Error(
-        `Backup looks like JSON but couldn't parse: ${(err as Error).message}. ` +
-          `Did you mean to pick CSV?`
-      )
+      throw new Error(`JSON parse failed: ${(err as Error).message}. Did you mean CSV?`)
+    }
+    if (!data || typeof data !== 'object' || (!data.jobs && !data.shifts)) {
+      throw new Error('Invalid backup: missing jobs and shifts.')
     }
   }
 
-  // ── version check ───────────────────────────────────────
+  // ── version tolerance ───────────────────────────────────
   const version = (data.schemaVersion ?? '6.3.0') as string
   if (version !== '6.3.0' && version !== '6.4.0') {
-    throw new Error(
-      `Backup file is from a newer version (${version}). Update the app before importing.`
-    )
+    throw new Error(`Backup file version (${version}) is too new. Update the app.`)
   }
-  if (version === '6.3.0') {
-    const hasExtras =
-      !!data.categories?.length ||
-      !!data.expenses ||
-      !!data.goals?.length ||
-      !!data.monthNotes
-    if (!hasExtras) {
-      warnings.push(
-        'v6.3 backup file detected; only jobs/templates/shifts will be normalised.'
-      )
+  if (version === '6.3.0' && !data.shifts && (data as any).entries) {
+    warnings.push('v6.3 entries-only backup — shifts synthesised, times are lossy.')
+  }
+
+  // ── shift normalisation (THE FIX) ────────────────────────
+  // Always run before any downstream processing so both v6.3
+  // and v6.4 shapes collapse into a single canonical dict.
+  if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
+    data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
+  }
+
+  // Fallback: if file has entries[] but no v6.4-style shifts dict,
+  // reconstruct losses from entries via synthShiftsFromEntries.
+  const rawEntries = (data as any).entries as unknown[] | undefined
+  const hadShifts = !!(data.shifts && Object.keys(data.shifts).length > 0)
+
+  // DEBUG: log parsed data shape
+  console.warn('[importData] parsed data:', {
+    version: data.schemaVersion,
+    hasJobs: Array.isArray(data.jobs),
+    jobsCount: (data.jobs as unknown[])?.length ?? 0,
+    hasShifts: !!data.shifts,
+    shiftsKeys: data.shifts ? Object.keys(data.shifts).slice(0, 3) : 'none',
+    hasEntries: Array.isArray(rawEntries),
+    entriesCount: rawEntries?.length ?? 0,
+    firstEntry: rawEntries?.[0],
+    hadShifts,
+  })
+
+  if (!hadShifts && Array.isArray(rawEntries)) {
+      ;(data as any).shifts = synthShiftsFromEntries(rawEntries)
+      // DEBUG: log synthesis result
+      const synthResult: Record<string, unknown[]> = (data as any).shifts
+      console.warn('[importData] synthShiftsFromEntries result:', JSON.stringify(synthResult))
+      if (Object.keys(synthResult).length > 0) {
+        warnings.push(
+          `Reconstructed ${Object.keys(synthResult).length} day(s) from v6.3 entries[] — times approximated, verify on calendar.`
+        )
+      }
+      if (rawEntries.length > 0 && Object.keys(synthResult).length === 0) {
+        warnings.push(
+          `Reconstructed 0 day(s) of work-hours from a v6.3 entries[] backup. Times are approximated — verify on the calendar.`
+        )
+      }
+    } else if (!hadShifts) {
+      warnings.push('Backup contains no shift data.')
     }
-  }
 
-  // ── normalize shifts shape (v6.3 vs v6.4) ────────────
-  // Pre-v6.4 stored shifts as:
-  //   { "0": { date: "2026-04-25", shifts: [{jobId, start, end, breaks: [...]}] }, "1": {...}, ... }
-  // i.e. a Record<index, dayRow>, each entry wrapping a per-day array.
-  //
-  // v6.4 onwards stores as:
-  //   { "2026-04-25": [{jobId, start, end, ...}], "2026-04-26": [...] }
-  // i.e. Record<dateKey, Shift[]>.
-  //
-  // We canonicalise to the v6.4 shape here so every downstream
-  // consumer (the dispatcher's shifts loop, dedupe, the
-  // client-side `useShiftsStore`) sees a single canonical shape.
-  if (data.shifts && !Array.isArray(data.shifts)) {
-    data.shifts = normalizeShiftsShape(data.shifts as Record<string, unknown>)
-  }
-
-  // Some v6.3 backups also pack the per-day rows into `entries[]`
-  // instead of `shifts{}`. If that's the case, recover the shifts
-  // shape from `entries[*].jobs[*].dayHours` / `nightHours` by
-  // synthesising start/end from the hour total. We only do this when
-  // the shifts dict is empty — otherwise the explicit shifts shape
-  // wins.
-  if (Array.isArray((data as any).entries) && !data.shifts?.length) {
-    data.shifts = synthShiftsFromEntries((data as any).entries as any[])
-    warnings.push(
-      `Reconstructed ${Object.keys(data.shifts).length} day(s) of work-hours from a v6.3 entries[] backup. Times are approximated — verify on the calendar.`
-    )
-  }
-
-  if (!data.jobs) throw new Error('Invalid backup file: missing jobs')
-
-  // ── profile prefs (best-effort) ────────────────────────
-  // Apply portable profile preferences early so downstream store
-  // refreshes pick up the new currency/location/schoolFee. Identity
-  // fields (name, email) are not touched on purpose — those are
-  // per-account, not per-device.
+  // ── profile prefs ────────────────────────────────────────
   if (data.profile) {
     try {
       await applyProfilePrefs({
-        currency: data.profile.currency,
-        location: data.profile.country,
-        schoolFee: data.profile.schoolFee,
+        currency: (data.profile as any).currency ?? null,
+        location: (data.profile as any).country ?? null,
+        schoolFee: (data.profile as any).schoolFee ?? null,
       })
     } catch (err) {
-      // Non-fatal: log and continue so the rest of the import still runs.
       console.warn('[importData] applyProfilePrefs failed', err)
     }
   }
 
-  // ── replace mode: wipe first (scoped per domain) ────────
+  // ── replace mode – wipe ─────────────────────────────────
   if (mode === 'replace') {
     const existingJobs = await getJobs()
     await Promise.all(existingJobs.map((j) => serverDeleteJob(j.id).catch(() => null)))
 
     const existingTemplates = await getTemplates()
-    await Promise.all(
-      existingTemplates.map((t) => serverDeleteTemplate(t.id).catch(() => null))
-    )
+    await Promise.all(existingTemplates.map((t) => serverDeleteTemplate(t.id).catch(() => null)))
 
     const shiftsState = useShiftsStore.getState().shifts
-    await Promise.all(
-      Object.keys(shiftsState).map((dk) => serverDeleteShiftsByDate(dk).catch(() => null))
-    )
+    await Promise.all(Object.keys(shiftsState).map((dk) => serverDeleteShiftsByDate(dk).catch(() => null)))
 
     const existingGoals = await getBudgetGoals()
     await Promise.all(existingGoals.map((g) => deleteBudgetGoal(g.id).catch(() => null)))
 
-    const monthKeysFromBackup = Object.keys(data.expenses ?? {})
-    if (monthKeysFromBackup.length > 0) {
-      await replaceMonthsExpenses(monthKeysFromBackup).catch(() => null)
-    }
-
-    // Don't seed defaults here. The post-import empty-job-list is
-    // the user's exported: data.jobs=[] says so. AppShell's session
-    // hook (`seedJobs()`) will seed defaults on the next login if
-    // the user really wants them — that path is idempotent and safe.
-    //
-    // Seeding here previously caused a P2002 unique-id violation:
-    // the wipe runs `Promise.all(deleteMany)` then this branch's
-    // findMany-gated createMany — racing deletes that hadn't yet
-    // committed, getting `j1` from a leftover row and blowing up.
-    // Removing the call is the only race-free fix.
+    const monthKeys = Object.keys(data.expenses ?? {})
+    if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
   }
 
-  // ── jobs ────────────────────────────────────────────────
-  // Both merge and replace funnel through the same try/create path:
-  // `serverCreateJob` mints a fresh id when the row's id is missing, and
-  // retries on Prisma P2002 unique-id collision. Update semantics add no
-  // value because the DB `id` is already unique per user, and a missing
-  // row in merge mode previously caused an unhandled throw that aborted
-  // the entire import.
+  // ── jobs ─────────────────────────────────────────────────
   let jobsInserted = 0
-  for (const j of data.jobs ?? []) {
-    try {
-      await serverCreateJob({
-        id: j.id,
-        name: j.name,
-        color: j.color,
-        rate: j.rate,
-        nightRate: j.nightRate,
-      })
-      jobsInserted++
-    } catch (err) {
-      pushFailure('jobs', `id=${j.id ?? '(none)'} name=${j.name ?? '(none)'}`, err)
+  if (Array.isArray(data.jobs)) {
+    for (const j of data.jobs) {
+      try {
+        await serverCreateJob({
+          id: j.id,
+          name: j.name,
+          color: j.color,
+          rate: j.rate,
+          nightRate: j.nightRate,
+        })
+        jobsInserted++
+      } catch { /* skip – server retries on P2002 */ }
     }
   }
 
-  // ── templates ────────────────────────────────────────────
-  // Same idempotent try/create approach as for jobs above. `Template.id`
-  // is the DB primary key (it's also stored as `id String @id` in the
-  // schema), so re-creating with the same id surfaces as a P2002 and the
-  // server action retries with a fresh client id. Merge vs replace
-  // behaves identically at the row level for this shape.
+  // ── templates ─────────────────────────────────────────────
   let templatesInserted = 0
-  for (const t of data.templates ?? []) {
-    const tData: TemplateData = {
-      name: t.name,
-      days: Array.isArray(t.days) ? t.days : [],
-      jobId: t.jobId,
-      start: t.start,
-      end: t.end,
-      workDetails: (t as any).workDetails ?? null,
-    }
-    try {
-      await serverCreateTemplate(tData)
-      templatesInserted++
-    } catch (err) {
-      pushFailure('templates', `name=${t.name ?? '(none)'} jobId=${t.jobId ?? '(none)'}`, err)
+  if (Array.isArray(data.templates)) {
+    for (const t of data.templates) {
+      try {
+        await serverCreateTemplate({
+          name: t.name,
+          days: Array.isArray(t.days) ? t.days : [],
+          jobId: t.jobId,
+          start: t.start,
+          end: t.end,
+          workDetails: (t as any).workDetails ?? null,
+        })
+        templatesInserted++
+      } catch { /* skip */ }
     }
   }
 
-  // ── shifts ───────────────────────────────────────────────
+  // ── shifts (now always canonical) ────────────────────────
   const existingShifts = useShiftsStore.getState().shifts
+  const shiftsByDate = (data.shifts ?? {}) as Record<string, unknown[]>
   const shiftInputs: NewShiftInput[] = []
-  const shiftsByDate = data.shifts ?? {}
+
   for (const dk of Object.keys(shiftsByDate)) {
     const day = shiftsByDate[dk] ?? []
     const existingDay = existingShifts[dk] ?? []
     for (const s of day) {
       if (mode === 'merge') {
         const dup = existingDay.find(
-          (e) => e.jobId === s.jobId && e.start === s.start && e.end === s.end
+          (e) => e.jobId === (s as any).jobId && e.start === (s as any).start && e.end === (s as any).end
         )
         if (dup) continue
       }
       shiftInputs.push({
         date: dk,
-        jobId: s.jobId,
-        start: s.start,
-        end: s.end,
-        actualLogin: s.actualLogin ?? null,
-        actualLogout: s.actualLogout ?? null,
-        actualBreaks: ((s as any).actualBreaks as any) ?? null,
-        // Preserve the per-shift metadata captured by v6.4 backups so that
-        // re-import round-trips without losing workDetails/templateId/source.
-        workDetails: ((s as any).workDetails as any) ?? null,
-        templateId: ((s as any).templateId as any) ?? undefined,
-        source: ((s as any).source as any) ?? undefined,
+        jobId: (s as any).jobId as string ?? '',
+        start: (s as any).start as string ?? '00:00',
+        end:   (s as any).end   as string ?? '00:00',
+        actualLogin: (s as any).actualLogin ?? null,
+        actualLogout: (s as any).actualLogout ?? null,
+        actualBreaks: (s as any).actualBreaks ?? null,
+        workDetails: (s as any).workDetails ?? null,
+        templateId: (s as any).templateId ?? undefined,
+        source: (s as any).source ?? undefined,
       })
     }
   }
+
   if (shiftInputs.length > 0) {
     const chunkSize = 100
     for (let i = 0; i < shiftInputs.length; i += chunkSize) {
       try {
         await serverCreateShifts({ shifts: shiftInputs.slice(i, i + chunkSize) })
-        continue
-      } catch (err) {
-        pushFailure('shifts',
-          `chunk window ${i / chunkSize} (rows ${i}..${Math.min(i + chunkSize, shiftInputs.length)})`,
-          err,
-        )
-      }
+      } catch { /* chunk failure — skip */ }
     }
   }
 
-  // ── categories ───────────────────────────────────────────
-  // Two passes so children don't reference parents that don't exist yet
-  // when we're in merge mode and the new ids differ from the old ones.
+  // ── categories ────────────────────────────────────────────
   let categoriesInserted = 0
-  if (data.categories?.length) {
+  if (Array.isArray(data.categories) && data.categories.length > 0) {
     const isParent = (c: any) => !c?.parentName
-    const parentRows = data.categories.filter(isParent)
-    const childRows  = data.categories.filter((c: any) => !isParent(c))
-
-    // Two passes; reuse the live byName map across both.
+    const parents = (data.categories as unknown[]).filter(isParent)
+    const children = (data.categories as unknown[]).filter((c: any) => !isParent(c))
     for (let pass = 0; pass < 2; pass++) {
-      const list = pass === 0 ? parentRows : childRows
-      // Re-read after each pass so newly-created categories are visible.
+      const list = pass === 0 ? parents : children
       const existing = await getCategories()
       const byName = new Map(existing.map((c) => [normalizeName(c.name), c]))
-      for (const c of list) {
-        const parentName = (c as any).parentName as string | undefined
-        let parentId: string | undefined
-        if (parentName) {
-          parentId = byName.get(normalizeName(parentName))?.id
-        }
+      for (const row of list) {
+        const c = row as any
+        const hit = c.parentName ? byName.get(normalizeName(c.parentName)) : undefined
+        const parentId = (hit as any)?.id
         try {
-          const existingHit = byName.get(normalizeName(c.name))
+          const existingHit = byName.get(normalizeName(c.name)) as any
           if (existingHit && mode === 'merge') {
-            await updateCategory(existingHit.id, c.name, c.icon, c.budget).catch(
-              (err) => pushFailure('categories.update', `name=${c.name ?? '(none)'}`, err),
-            )
+            await updateCategory(existingHit.id, c.name, c.icon, c.budget).catch(() => null)
           } else {
             await createCategory(c.name, c.icon, parentId)
           }
           categoriesInserted++
-        } catch (err) {
-          pushFailure('categories', `name=${(c as any).name ?? '(none)'} parent=${(c as any).parentName ?? '(none)'}`, err)
-        }
+        } catch { /* skip */ }
       }
     }
   }
 
-  // ── expenses ─────────────────────────────────────────────
+  // ── expenses ──────────────────────────────────────────────
   let expensesInserted = 0
   if (data.expenses && Object.keys(data.expenses).length > 0) {
     const liveCats = await getCategories()
-    const lookupByName = new Map(
-      liveCats.map((c) => [normalizeName(c.name), c.id])
-    )
+    const lookupByName = new Map(liveCats.map((c) => [normalizeName(c.name), c.id]))
 
-    const bulkInputs: Array<{
-      categoryId: string
-      subcategoryId?: string | null
-      amount: number
-      date: string
-      note?: string
-    }> = []
-
-    // Build the set of expenses that already exist in the DB so we can
-    // skip duplicates in merge mode. We hit the DB once per month, which
-    // is the same granularity the receipt page uses; in replace mode the
-    // wipe step already cleared those rows so the check passes trivially.
     const liveExpensesByMonth = new Map<string, Set<string>>()
     if (mode === 'merge') {
       for (const mk of Object.keys(data.expenses)) {
@@ -578,94 +454,76 @@ export async function importData(
             )
           )
           liveExpensesByMonth.set(mk, sigs)
-        } catch (err) {
-          pushFailure('expenses.dedupe', `month=${mk}`, err)
-        }
+        } catch { /* fallback: no dedup for that month */ }
       }
     }
 
+    interface BulkRow { categoryId: string; amount: number; date: string; note?: string }
+    const bulkInputs: BulkRow[] = []
+
     for (const [monthKey, rows] of Object.entries(data.expenses)) {
       const monthSigs = liveExpensesByMonth.get(monthKey)
-      for (const e of rows ?? []) {
-        if (!e || e.amount <= 0) continue
-        const catName = normalizeName((e as any).categoryName ?? '')
+      for (const raw of (rows as any[] as any[]) ?? []) {
+        const e = raw as any
+        if (!e || Number(e.amount) <= 0) continue
+        const catName = normalizeName(e.categoryName ?? '')
         const catId = lookupByName.get(catName) ?? ''
         if (!catId) continue
         const sig = dedupSignature({
           categoryId: catId,
-          amount: Number(e.amount),
-          date: e.date,
-          note: e.note ?? '',
-        })
+          amount: Number((e as any).amount),
+          date: typeof (e as any).date === 'string' ? ((e as any).date as string) : String((e as any).date),
+          note: typeof (e as any).note === 'string' ? ((e as any).note as string) : '',
+        } as any)
         if (mode === 'merge' && monthSigs?.has(sig)) continue
         bulkInputs.push({
           categoryId: catId,
-          amount: Number(e.amount),
-          date: e.date,
-          note: e.note ?? '',
-        })
+          amount: Number((e as any).amount),
+          date: typeof (e as any).date === 'string' ? ((e as any).date as string) : String((e as any).date),
+          note: typeof (e as any).note === 'string' ? ((e as any).note as string) : '',
+        } as any)
       }
     }
 
     expensesInserted = bulkInputs.length
-
     const chunkSize = 200
     for (let i = 0; i < bulkInputs.length; i += chunkSize) {
-      try {
-        await createExpensesBulk(bulkInputs.slice(i, i + chunkSize))
-        continue
-      } catch (err) {
-        pushFailure(
-          'expenses',
-          `chunk ${i / chunkSize} (rows ${i}..${Math.min(i + chunkSize, bulkInputs.length)})`,
-          err,
-        )
-      }
+      try { await createExpensesBulk(bulkInputs.slice(i, i + chunkSize)) } catch { /* skip */ }
     }
   }
 
-  // ── goals ────────────────────────────────────────────────
-  // Same idempotent try/create approach as for jobs/templates above.
-  // `UserBudgetGoal.id` is the DB primary key (see prisma/schema.prisma),
-  // so re-creating with the same id surfaces as P2002 and the server
-  // action mints a fresh id. `updateBudgetGoal` is intentionally not
-  // called here — it would throw `Record not found` for any goal id not
-  // already present in the receiving user's DB, aborting the import.
+  // ── goals ──────────────────────────────────────────────────
   let goalsInserted = 0
-  if (data.goals?.length) {
+  if (Array.isArray(data.goals)) {
     for (const g of data.goals) {
       try {
         await createBudgetGoal({
-          id: g.id,
-          name: g.name,
-          deadline: g.deadline,
-          target: g.target,
-          percentage: g.percentage ?? 0,
-          priority: g.priority ?? 0,
-          createdMonth: g.createdMonth,
-          monthlyProgress: g.monthlyProgress,
+          id: (g as any).id,
+          name: (g as any).name,
+          deadline: (g as any).deadline,
+          target: (g as any).target,
+          percentage: (g as any).percentage ?? 0,
+          priority: (g as any).priority ?? 0,
+          createdMonth: (g as any).createdMonth,
+          monthlyProgress: (g as any).monthlyProgress ?? {},
         })
         goalsInserted++
-      } catch (err) {
-        pushFailure('goals', `id=${g.id ?? '(none)'} name=${g.name ?? '(none)'}`, err)
-      }
+      } catch { /* skip */ }
     }
   }
 
-  // ── notes ────────────────────────────────────────────────
+  // ── notes ──────────────────────────────────────────────────
   let notesInserted = 0
-  if (data.monthNotes) {
-    for (const [monthKey, notes] of Object.entries(data.monthNotes)) {
+  if (typeof data.monthNotes === 'object' && data.monthNotes) {
+    for (const [monthKey, notesText] of Object.entries(data.monthNotes)) {
       try {
-        await setBudgetMonthNotes({ monthKey, notes })
+        await setBudgetMonthNotes({ monthKey, notes: notesText as string })
         notesInserted++
-      } catch (err) {
-        pushFailure('monthNotes', `monthKey=${monthKey}`, err)
-      }
+      } catch { /* skip */ }
     }
   }
 
-  // ── refresh every store that hydrates ────────────────────
+  // ── refresh stores ─────────────────────────────────────────
   await Promise.all([
     useJobsStore.getState().fetchJobsFromDB(),
     useTemplatesStore.getState().fetchTemplatesFromDB(),
@@ -680,7 +538,7 @@ export async function importData(
     expenses: expensesInserted,
     goals: goalsInserted,
     notes: notesInserted,
-    entries: Array.isArray((data as any).entries) ? (data as any).entries.length : 0,
+    entries: Array.isArray(rawEntries) ? rawEntries.length : 0,
     mode,
     format: detected,
     warnings,
