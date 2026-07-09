@@ -7,6 +7,12 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ── v7.0.0 — UserRole enum + User.role for admin foundation ──
+enum UserRole {
+  USER
+  ADMIN
+}
+
 model User {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
@@ -17,6 +23,10 @@ model User {
   schoolFee           Int                  @default(840000) @map("school_fee")
   emailVerified       DateTime?            @map("email_verified") @db.Timestamptz(6)
   actualTimesEnabled  Boolean              @default(false) @map("actual_times_enabled")
+  // Default USER keeps existing rows backward-compatible. New columns
+  // with defaults are non-destructive in `db push`, and the migration
+  // baseline captures them explicitly.
+  role                UserRole             @default(USER)
   createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(6)
   sessions            Session[]
@@ -26,10 +36,34 @@ model User {
   templates           UserTemplate[]
   shifts              UserShift[]
   jobs                UserJob[]
-  budgetGoals         UserBudgetGoal[]
   budgetMonthMetas    UserBudgetMonthMeta[]
+  budgetGoals         UserBudgetGoal[]
+  adminAuditActions   AdminAuditLog[]      @relation("AdminAuditLogActor")
 
   @@map("users")
+}
+
+// ── v7.0.0 — Admin audit log ─────────────────────────────────
+// Records every admin-initiated mutation: actor (admin user), action
+// key, optional target resource, and free-form JSON metadata for
+// before/after deltas (role flips, force-logout, etc.). The auditing
+// is performed inside the relevant server actions; this model only
+// stores the resulting line items.
+model AdminAuditLog {
+  id           String   @id @default(uuid()) @db.Uuid
+  adminUserId  String   @map("admin_user_id") @db.Uuid
+  action       String
+  targetType   String?  @map("target_type")
+  targetId     String?  @map("target_id")
+  metadata     Json?
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  adminUser User @relation("AdminAuditLogActor", fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@index([adminUserId], map: "admin_audit_log_admin_idx")
+  @@index([createdAt(sort: Desc)], map: "admin_audit_log_created_at_desc_idx")
+  @@index([action], map: "admin_audit_log_action_idx")
+  @@map("admin_audit_log")
 }
 
 model VerificationToken {
