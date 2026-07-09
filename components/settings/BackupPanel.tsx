@@ -84,7 +84,7 @@ export default function BackupPanel() {
         </div>
       </button>
 
-      <button onClick={() => { fileRef.current?.click() }} style={actionBtn}>
+      <button onClick={() => { setMode('import'); setStep('format') }} style={actionBtn}>
         <span>📤</span>
         <div>
           <div style={{ fontWeight: 600, fontSize: 13 }}>Import Backup</div>
@@ -145,6 +145,34 @@ export default function BackupPanel() {
                     style={{ ...primaryBtn, marginTop: 16, width: '100%' }}
                   >
                     {loading ? 'Exporting…' : `Download ${format.toUpperCase()}`}
+                  </button>
+                </>
+              )}
+
+              {mode === 'import' && step === 'format' && (
+                <>
+                  <div style={label}>Choose a backup file</div>
+                  <button
+                    type="button"
+                    onClick={() => fileRef.current?.click()}
+                    style={{
+                      ...primaryBtn,
+                      width: '100%',
+                      padding: '20px 14px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: 6,
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <span style={{ fontSize: 22 }}>📂</span>
+                    <span style={{ fontWeight: 800 }}>
+                      Choose JSON or CSV backup
+                    </span>
+                    <span style={{ fontSize: 11, fontWeight: 500, opacity: 0.85 }}>
+                      Format is detected automatically from the file.
+                    </span>
                   </button>
                 </>
               )}
