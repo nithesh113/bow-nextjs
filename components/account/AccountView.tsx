@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useTransition } from 'react'
+import Link from 'next/link'
 import { Settings } from 'lucide-react'
 import { AuthUser } from '@/lib/auth/session'
 import { updateAccount, resendVerificationEmailAction } from '@/app/actions/account'
@@ -312,6 +313,24 @@ export default function AccountView({ user }: { user: AuthUser }) {
           {isPending ? '⏳  Saving…' : '💾  Save Changes'}
         </button>
       </form>
+
+      {/* ── Send feedback (Plan §26) ────────── */}
+      <div style={{ padding: '8px 16px 0 16px' }}>
+        <Link
+          href={`/feedback?from=${encodeURIComponent('/account')}`}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            padding: '11px 12px', borderRadius: 12,
+            background: 'rgba(255,255,255,0.04)',
+            border: '1px solid var(--border)',
+            color: 'var(--text)',
+            fontWeight: 700, fontSize: 13,
+            textDecoration: 'none',
+          }}
+        >
+          💬 Send feedback
+        </Link>
+      </div>
 
       {/* ── Settings (More page) — reveal via ⚙️ icon ── */}
       {showSettings && (

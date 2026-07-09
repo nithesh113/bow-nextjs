@@ -40,8 +40,34 @@ model User {
   budgetGoals         UserBudgetGoal[]
   adminAuditActions   AdminAuditLog[]      @relation("AdminAuditLogActor")
   emailLogs           EmailLog[]
+  feedback            UserFeedback[]
 
   @@map("users")
+}
+
+// ── v7.1.0 — User feedback (Plan §26) ─────────────
+// Lightweight in-app feedback system that lets users send reviews,
+// feature suggestions, and bug reports. Admins triage in
+// /admin/feedback. Status is a string so admin workflows can be
+// reskinned without schema migrations.
+model UserFeedback {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  type      String
+  rating    Int?
+  message   String
+  page      String?
+  status    String   @default("NEW")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId], map: "user_feedback_user_idx")
+  @@index([type], map: "user_feedback_type_idx")
+  @@index([status], map: "user_feedback_status_idx")
+  @@index([createdAt(sort: Desc)], map: "user_feedback_created_at_desc_idx")
+  @@map("user_feedback")
 }
 
 // ── v7.0.0 — Admin audit log ──────────────────
