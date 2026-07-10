@@ -261,6 +261,7 @@ export async function importData(
     // Always run before any downstream processing so both v6.3
     // and v6.4 shapes collapse into a single canonical dict.
     const preNormKeys = data.shifts ? Object.keys(data.shifts) : []
+    console.warn('[importData]....', data)
     console.warn('[importData] pre-normalize shifts keys:', preNormKeys.slice(0, 5), 'total:', preNormKeys.length)
     if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
       data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
