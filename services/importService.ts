@@ -237,49 +237,55 @@ export async function importData(
   if (detected === 'csv') {
     data = csvSectionsToBackupData(text)
   } else {
-    try {
-      data = JSON.parse(text) as Partial<BackupData>
-    } catch (err) {
-      throw new Error(`JSON parse failed: ${(err as Error).message}. Did you mean CSV?`)
+      try {
+        data = JSON.parse(text) as Partial<BackupData>
+        console.warn('[importData] raw parse complete, schemaVersion:', data.schemaVersion, 'jobs type:', typeof data.jobs, 'isArray:', Array.isArray(data.jobs), 'jobs len:', (data.jobs as any[])?.length)
+      } catch (err) {
+        throw new Error(`JSON parse failed: ${(err as Error).message}. Did you mean CSV?`)
+      }
+      if (!data || typeof data !== 'object' || (!data.jobs && !data.shifts)) {
+        throw new Error('Invalid backup: missing jobs and shifts.')
+      }
     }
-    if (!data || typeof data !== 'object' || (!data.jobs && !data.shifts)) {
-      throw new Error('Invalid backup: missing jobs and shifts.')
-    }
-  }
 
   // ── version tolerance ───────────────────────────────────
-  const version = (data.schemaVersion ?? '6.3.0') as string
-  if (version !== '6.3.0' && version !== '6.4.0') {
-    throw new Error(`Backup file version (${version}) is too new. Update the app.`)
-  }
-  if (version === '6.3.0' && !data.shifts && (data as any).entries) {
-    warnings.push('v6.3 entries-only backup — shifts synthesised, times are lossy.')
-  }
+    const version = (data.schemaVersion ?? '6.3.0') as string
+    if (version !== '6.3.0' && version !== '6.4.0') {
+      throw new Error(`Backup file version (${version}) is too new. Update the app.`)
+    }
+    if (version === '6.3.0' && !data.shifts && (data as any).entries) {
+      warnings.push('v6.3 entries-only backup — shifts synthesised, times are lossy.')
+    }
 
-  // ── shift normalisation (THE FIX) ────────────────────────
-  // Always run before any downstream processing so both v6.3
-  // and v6.4 shapes collapse into a single canonical dict.
-  if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
-    data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
-  }
+    // ── shift normalisation (THE FIX) ────────────────────────
+    // Always run before any downstream processing so both v6.3
+    // and v6.4 shapes collapse into a single canonical dict.
+    const preNormKeys = data.shifts ? Object.keys(data.shifts) : []
+    console.warn('[importData] pre-normalize shifts keys:', preNormKeys.slice(0, 5), 'total:', preNormKeys.length)
+    if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
+      data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
+    }
+    const postNormKeys = data.shifts ? Object.keys(data.shifts) : []
+    console.warn('[importData] post-normalize shifts keys:', postNormKeys.slice(0, 5), 'total:', postNormKeys.length)
 
-  // Fallback: if file has entries[] but no v6.4-style shifts dict,
-  // reconstruct losses from entries via synthShiftsFromEntries.
-  const rawEntries = (data as any).entries as unknown[] | undefined
-  const hadShifts = !!(data.shifts && Object.keys(data.shifts).length > 0)
+    // Fallback: if file has entries[] but no v6.4-style shifts dict,
+    // reconstruct losses from entries via synthShiftsFromEntries.
+    const rawEntries = (data as any).entries as unknown[] | undefined
+    const hadShifts = !!(data.shifts && Object.keys(data.shifts).length > 0)
+    console.warn('[importData] rawEntries count:', rawEntries?.length ?? 0, 'hadShifts:', hadShifts)
 
-  // DEBUG: log parsed data shape
-  console.warn('[importData] parsed data:', {
-    version: data.schemaVersion,
-    hasJobs: Array.isArray(data.jobs),
-    jobsCount: (data.jobs as unknown[])?.length ?? 0,
-    hasShifts: !!data.shifts,
-    shiftsKeys: data.shifts ? Object.keys(data.shifts).slice(0, 3) : 'none',
-    hasEntries: Array.isArray(rawEntries),
-    entriesCount: rawEntries?.length ?? 0,
-    firstEntry: rawEntries?.[0],
-    hadShifts,
-  })
+    // DEBUG: log parsed data shape
+    console.warn('[importData] parsed data:', {
+      version: data.schemaVersion,
+      hasJobs: Array.isArray(data.jobs),
+      jobsCount: (data.jobs as unknown[])?.length ?? 0,
+      hasShifts: !!data.shifts,
+      shiftsKeys: postNormKeys.slice(0, 3),
+      hasEntries: Array.isArray(rawEntries),
+      entriesCount: rawEntries?.length ?? 0,
+      firstEntry: rawEntries?.[0],
+      hadShifts,
+    })
 
   if (!hadShifts && Array.isArray(rawEntries)) {
       ;(data as any).shifts = synthShiftsFromEntries(rawEntries)
