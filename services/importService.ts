@@ -99,9 +99,17 @@ function looksLikeDayRow(x: unknown): x is { date: string; shifts: unknown[] } {
 function looksLikeShiftRow(x: unknown): x is { jobId: string; start: string; end: string } {
   if (!x || typeof x !== 'object') return false
   const r = x as Record<string, unknown>
-  return typeof r.jobId === 'string' &&
-    typeof r.start === 'string' &&
-    typeof r.end === 'string'
+  return typeof r.jobId === 'string' && r.jobId.length > 0 &&
+    typeof r.start === 'string' && r.start.length > 0 && /^\d{2}:\d{2}$/.test(r.start) &&
+    typeof r.end === 'string' && r.end.length > 0 && /^\d{2}:\d{2}$/.test(r.end)
+}
+
+/**
+ * Returns a shift row only if it has valid non-empty start+end times.
+ * Used to filter out bad data from old exports (e.g. { start: '', end: '' }).
+ */
+function isValidShift(x: unknown): x is { jobId: string; start: string; end: string; breaks?: unknown[]; workDetails?: string } {
+  return looksLikeShiftRow(x)
 }
 
 /**
