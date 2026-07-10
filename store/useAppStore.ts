@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import type { TopTab, ModalType } from '@/types'
-import { CONFIG, MIN_DATE, MAX_DATE } from '@/lib/constants'
+import { CONFIG } from '@/lib/constants'
 import { navigateMonth } from '@/lib/dateUtils'
 
 interface AppState {
@@ -49,16 +49,13 @@ export const useAppStore = create<AppState>()(
 
       changeMonth: (delta) => {
         const { curY, curM } = get()
-        const { year: ny, month: nm } = navigateMonth(curY, curM, delta, MIN_DATE, MAX_DATE)
+        const { year: ny, month: nm } = navigateMonth(curY, curM, delta)
         set({ curY: ny, curM: nm })
       },
 
       goToday: () => {
         const now = new Date()
-        const ny = now.getFullYear()
-        const nm = now.getMonth()
-        const { year, month } = navigateMonth(ny, nm, 0, MIN_DATE, MAX_DATE)
-        set({ curY: year, curM: month })
+        set({ curY: now.getFullYear(), curM: now.getMonth() })
       },
 
       setModal: (modal, dateKey) =>

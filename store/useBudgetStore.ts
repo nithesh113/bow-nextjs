@@ -171,19 +171,15 @@ export const useBudgetStore = create<BudgetState>()(
 
     prevMonth: () => {
       const { currentMonth } = get()
-      const { year, month } = parseMonthKey(currentMonth)
-      const { year: ny, month: nm } = navigateMonth(year, month, -1,
-        new Date(CONFIG.START_YEAR, CONFIG.START_MONTH, 1),
-        new Date(CONFIG.START_YEAR, CONFIG.START_MONTH + CONFIG.TOTAL_MONTHS - 1, 1))
+            const { year, month } = parseMonthKey(currentMonth)
+            const { year: ny, month: nm } = navigateMonth(year, month, -1)
       set({ currentMonth: mkFn(ny, nm) })
     },
 
     nextMonth: () => {
       const { currentMonth } = get()
-      const { year, month } = parseMonthKey(currentMonth)
-      const { year: ny, month: nm } = navigateMonth(year, month, 1,
-        new Date(CONFIG.START_YEAR, CONFIG.START_MONTH, 1),
-        new Date(CONFIG.START_YEAR, CONFIG.START_MONTH + CONFIG.TOTAL_MONTHS - 1, 1))
+            const { year, month } = parseMonthKey(currentMonth)
+            const { year: ny, month: nm } = navigateMonth(year, month, 1)
       set({ currentMonth: mkFn(ny, nm) })
     },
 

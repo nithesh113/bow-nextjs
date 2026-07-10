@@ -72,19 +72,14 @@ export function parseMonthKey(mk: string): { year: number; month: number } {
   return { year: y, month: m - 1 }
 }
 
-/** Navigate month: returns new { year, month } clamped to [minDate, maxDate] */
+/** Navigate month: returns new { year, month } — unclamped, free navigation. */
 export function navigateMonth(
-  y: number, m: number, delta: number,
-  minDate: Date, maxDate: Date
+  y: number, m: number, delta: number
 ): { year: number; month: number } {
   let nm = m + delta
   let ny = y
   if (nm > 11) { ny += Math.floor(nm / 12); nm = nm % 12 }
   if (nm < 0)  { ny += Math.floor(nm / 12); nm = ((nm % 12) + 12) % 12 }
-
-  const target = new Date(ny, nm, 1)
-  if (target < minDate) return { year: minDate.getFullYear(), month: minDate.getMonth() }
-  if (target > maxDate) return { year: maxDate.getFullYear(), month: maxDate.getMonth() }
   return { year: ny, month: nm }
 }
 
