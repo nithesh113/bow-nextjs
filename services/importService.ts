@@ -60,10 +60,11 @@ function looksLikeCsv(text: string): boolean {
   const first = text
     .split(/\r?\n/, 20)
     .map((l) => l.trim())
-    .find((l) => l && !l.startsWith('{') && !l.startsWith('//'))
+    .find((l) => l && !l.startsWith('{') && !l.startsWith('"') && !l.startsWith('//'))
   if (!first) return false
-  return first.startsWith('# section:') || first.split(',').length >= 2
+  return first.startsWith('# section:') || first.split(',').length >= 3
 }
+
 
 // ── Normalisers ────────────────────────────────────────────
 
