@@ -170,16 +170,18 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
   // (Deduplicate any pre-existing rows; only return the ones we just inserted.)
   // We can't perfectly distinguish just-inserted rows without timestamps, but
   // for the modal's success path what matters is: we have *some* row per date.
-  const seen = new Set<number>()
-  return fetched
-    .filter((r: { date: Date; id: string }) => {
-      const t = r.date.getTime()
-      if (!dates.includes(t)) return false
-      if (seen.has(t)) return false
-      seen.add(t)
-      return true
-    })
-    .map(mapShift)
+  // Deduplicate: skip rows we've already returned (same date+jobId+start+end).
+    // Using a string key so (date + jobId + start) and (date + jobId2 + start)
+    // are distinct — multiple shifts per day are all preserved.
+    const seen = new Set<string>()
+    return fetched
+      .filter((r: { date: Date; jobId: string; start: string }) => {
+        const key = `${r.date.toISOString().slice(0, 10)}\u0001${r.jobId}\u0001${r.start}`
+        if (seen.has(key)) return false
+        seen.add(key)
+        return true
+      })
+      .map(mapShift)
 }
 
 /** Fetch DB-backed shifts for a single calendar month (year, 1-indexed month). */
