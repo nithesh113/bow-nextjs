@@ -351,40 +351,44 @@ export async function importData(
       if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
     }
 
-  // ── jobs ─────────────────────────────────────────────────
-  let jobsInserted = 0
-  if (Array.isArray(data.jobs)) {
-    for (const j of data.jobs) {
-      try {
-        await serverCreateJob({
-          id: j.id,
-          name: j.name,
-          color: j.color,
-          rate: j.rate,
-          nightRate: j.nightRate,
-        })
-        jobsInserted++
-      } catch { /* skip – server retries on P2002 */ }
+  const jobIdMap = new Map<string, string>() // oldId → DB id
+
+    // ── jobs ─────────────────────────────────────────────────
+    let jobsInserted = 0
+    if (Array.isArray(data.jobs)) {
+      for (const j of data.jobs) {
+        try {
+          const created = await serverCreateJob({
+            id: j.id,
+            name: j.name,
+            color: j.color,
+            rate: j.rate,
+            nightRate: j.nightRate,
+          })
+          jobIdMap.set(j.id, created.id)
+          jobsInserted++
+        } catch { /* skip – server retries on P2002 */ }
+      }
     }
-  }
 
   // ── templates ─────────────────────────────────────────────
-  let templatesInserted = 0
-  if (Array.isArray(data.templates)) {
-    for (const t of data.templates) {
-      try {
-        await serverCreateTemplate({
-          name: t.name,
-          days: Array.isArray(t.days) ? t.days : [],
-          jobId: t.jobId,
-          start: t.start,
-          end: t.end,
-          workDetails: (t as any).workDetails ?? null,
-        })
-        templatesInserted++
-      } catch { /* skip */ }
+    let templatesInserted = 0
+    if (Array.isArray(data.templates)) {
+      for (const t of data.templates) {
+        const mappedJobId = jobIdMap.get(t.jobId) ?? t.jobId
+        try {
+          await serverCreateTemplate({
+            name: t.name,
+            days: Array.isArray(t.days) ? t.days : [],
+            jobId: mappedJobId,
+            start: t.start,
+            end: t.end,
+            workDetails: (t as any).workDetails ?? null,
+          })
+          templatesInserted++
+        } catch { /* skip */ }
+      }
     }
-  }
 
   // ── shifts (now always canonical) ────────────────────────
   const existingShifts = useShiftsStore.getState().shifts
@@ -402,17 +406,17 @@ export async function importData(
         if (dup) continue
       }
       shiftInputs.push({
-        date: dk,
-        jobId: (s as any).jobId as string ?? '',
-        start: (s as any).start as string ?? '00:00',
-        end:   (s as any).end   as string ?? '00:00',
-        actualLogin: (s as any).actualLogin ?? null,
-        actualLogout: (s as any).actualLogout ?? null,
-        actualBreaks: (s as any).actualBreaks ?? null,
-        workDetails: (s as any).workDetails ?? null,
-        templateId: (s as any).templateId ?? undefined,
-        source: (s as any).source ?? undefined,
-      })
+              date: dk,
+              jobId: jobIdMap.get((s as any).jobId as string) ?? (s as any).jobId as string ?? '',
+              start: (s as any).start as string ?? '00:00',
+              end:   (s as any).end   as string ?? '00:00',
+              actualLogin: (s as any).actualLogin ?? null,
+              actualLogout: (s as any).actualLogout ?? null,
+              actualBreaks: (s as any).actualBreaks ?? null,
+              workDetails: (s as any).workDetails ?? null,
+              templateId: (s as any).templateId ?? undefined,
+              source: (s as any).source ?? undefined,
+            })
     }
   }
 
