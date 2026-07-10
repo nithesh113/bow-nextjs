@@ -351,25 +351,61 @@ export async function importData(
       if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
     }
 
-  const jobIdMap = new Map<string, string>() // oldId → DB id
+  // ── jobId map: name-match, DB-first ───────────────────────────────
+  // Loading the DB's existing jobs by NAME means:
+  //   1. duplicate imports don't create duplicate job rows
+  //   2. shifts backed by old audit IDs still resolve to the real job
+  //   3. we never depend on the random-id path that createJob hits on P2002
+  // Job rows only get inserted when no name match exists.
+  const jobIdMap = new Map<string, string>() // backup jobId → DB job.id
+  const dbJobsByName = new Map<string, string>() // name → DB job.id
 
-    // ── jobs ─────────────────────────────────────────────────
-    let jobsInserted = 0
-    if (Array.isArray(data.jobs)) {
-      for (const j of data.jobs) {
-        try {
-          const created = await serverCreateJob({
-            id: j.id,
-            name: j.name,
-            color: j.color,
-            rate: j.rate,
-            nightRate: j.nightRate,
-          })
-          jobIdMap.set(j.id, created.id)
-          jobsInserted++
-        } catch { /* skip – server retries on P2002 */ }
-      }
-    }
+  const jobsBefore = await getJobs()
+  for (const row of jobsBefore) {
+    const key = row.name?.trim().toLowerCase()
+    if (key) dbJobsByName.set(key, row.id)
+  }
+  // Pre-link any backup job whose name already exists in the DB.
+  for (const j of data.jobs ?? []) {
+    const key = j.name?.trim().toLowerCase()
+    if (!key) continue
+    const existing = dbJobsByName.get(key)
+    if (existing) jobIdMap.set(j.id, existing)
+  }
+
+  // ── jobs: only insert those NOT already present by name ────────────
+  let jobsInserted = 0
+  for (const j of data.jobs ?? []) {
+    const key = j.name?.trim().toLowerCase()
+    if (!key) continue
+    // Already linked above? Skip insertion entirely.
+    if (jobIdMap.has(j.id)) continue
+    try {
+      const created = await serverCreateJob({
+        id: j.id,
+        name: j.name,
+        color: j.color,
+        rate: j.rate,
+        nightRate: j.nightRate,
+      })
+      if (created?.id) jobIdMap.set(j.id, created.id)
+      jobsInserted++
+    } catch { /* P2002 etc. — role up to name-based match below */ }
+  }
+  // Final correctness sweep: pick up any inserts whose id may have been
+  // re-minted (random-id fallback) by re-querying the DB by name.
+  const jobsAfter = await getJobs()
+  for (const row of jobsAfter) {
+    const key = row.name?.trim().toLowerCase()
+    if (!key) continue
+    dbJobsByName.set(key, row.id)
+  }
+  for (const j of data.jobs ?? []) {
+    const key = j.name?.trim().toLowerCase()
+    if (!key) continue
+    const dbId = dbJobsByName.get(key)
+    if (dbId) jobIdMap.set(j.id, dbId)
+  }
 
   // ── templates ─────────────────────────────────────────────
     let templatesInserted = 0
