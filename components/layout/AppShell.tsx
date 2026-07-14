@@ -30,7 +30,7 @@ import { AuthUser } from '@/lib/auth/session'
 export default function AppShell({ user }: { user: AuthUser }) {
   const { activeTab, openModal, fabExpanded, hydratePerMinutePay } = useAppStore()
   const { syncShiftsFromDB } = useShiftsStore()
-  const { fetchJobsFromDB, seedJobs } = useJobsStore()
+  const { fetchJobsFromDB } = useJobsStore()
   const { fetchTemplatesFromDB } = useTemplatesStore()
 
   // Hydrate the per-minute toggle from the server (User.actualTimesEnabled).
@@ -38,22 +38,15 @@ export default function AppShell({ user }: { user: AuthUser }) {
     hydratePerMinutePay(user.actualTimesEnabled)
   }, [hydratePerMinutePay, user.actualTimesEnabled])
 
-  // Single boot: hook up focus/visibility/event listeners that bust
-  // the expense cache so the next view rendering refetches from DB.
-  //
-  // SEQUENCED: seedDefaults first MUST complete before fetchJobsFromDB so
-  // a re-mount on Vercel can't race a fresh DB read against a still-running
-  // createMany (whose post-createMany `prisma.userJob.findMany` would have
-  // returned []).
-  useEffect(() => {
-    startExpensesInvalidationListeners()
-    void (async () => {
-      try { await seedJobs() } catch (err) { console.warn('[AppShell.boot] seedJobs failed', err) }
-      try { await fetchJobsFromDB() } catch (err) { console.warn('[AppShell.boot] fetchJobsFromDB failed', err) }
-      try { await fetchTemplatesFromDB() } catch (err) { console.warn('[AppShell.boot] fetchTemplatesFromDB failed', err) }
-      try { await syncShiftsFromDB() } catch (err) { console.warn('[AppShell.boot] syncShiftsFromDB failed', err) }
-    })()
-  }, [syncShiftsFromDB, fetchJobsFromDB, seedJobs, fetchTemplatesFromDB])
+  // Hydrate jobs, templates, and shifts from DB on boot.
+    useEffect(() => {
+      startExpensesInvalidationListeners()
+      void (async () => {
+        try { await fetchJobsFromDB() } catch (err) { console.warn('[AppShell.boot] fetchJobsFromDB failed', err) }
+        try { await fetchTemplatesFromDB() } catch (err) { console.warn('[AppShell.boot] fetchTemplatesFromDB failed', err) }
+        try { await syncShiftsFromDB() } catch (err) { console.warn('[AppShell.boot] syncShiftsFromDB failed', err) }
+      })()
+    }, [syncShiftsFromDB, fetchJobsFromDB, fetchTemplatesFromDB])
 
   return (
     <div style={{ minHeight: '100vh', background: 'var(--bg)', paddingBottom: 'calc(80px + env(safe-area-inset-bottom, 0px))' }}>

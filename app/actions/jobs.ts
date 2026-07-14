@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser } from '@/lib/auth/session'
+import { makeUserRowId } from '@/lib/ids'
 import { revalidatePath } from 'next/cache'
 
 // ── Types ──────────────────────────────────────────
@@ -139,51 +140,49 @@ export async function seedDefaultJobsIfEmpty(): Promise<JobRow[]> {
   return rows.map(mapJob)
 }
 
-/** Insert a new job. Server mints the client id if absent. */
+/** Insert a new job. Server generates a user-prefixed id (e.g. `nithesh_j1`),
+ *  or accepts the provided id if its prefix matches the user's public handle. */
 export async function createJob(data: JobData): Promise<JobRow> {
-  const userId = await requireUserId()
+  const authUser = await getCurrentUser()
+  if (!authUser) throw new Error('Not authenticated')
+  const { id: dbId, userId: handle } = authUser
   const err = validate(data)
   if (err) throw new Error(err)
 
-  // Mint a unique client-id; if a collision occurs (very unlikely),
-  // reroll once and retry.
-  const candidateId = data.id || newJobId()
+  const rawId = data.id?.trim()
 
-  try {
-    const row = await prisma.userJob.create({
-      data: {
-        id: candidateId,
-        userId,
-        name: data.name.trim(),
-        color: data.color,
-        rate: data.rate,
-        nightRate: data.nightRate,
-        sortOrder: data.sortOrder ?? 0,
-      },
-    })
-    revalidatePath('/dashboard')
-    return mapJob(row)
-  } catch (e: unknown) {
-    const code = (e as { code?: string })?.code
-    if (code === 'P2002') {
-      // Unique constraint on id — retry with a freshly-minted id.
-      const fresh = newJobId()
-      const row = await prisma.userJob.create({
-        data: {
-          id: fresh,
-          userId,
-          name: data.name.trim(),
-          color: data.color,
-          rate: data.rate,
-          nightRate: data.nightRate,
-          sortOrder: data.sortOrder ?? 0,
-        },
-      })
-      revalidatePath('/dashboard')
-      return mapJob(row)
-    }
-    throw e
+  // If the user has no handle yet (userId is null), reject any client-supplied
+  // id and let the server generate a fresh one.
+  if (rawId && !handle) {
+    throw new Error(`Job id cannot be accepted until your account has a public handle set. A new id will be generated.`)
   }
+
+  const userRowIdPrefix = handle ? `${handle}_` : null
+
+  // Validate any client-supplied id belongs to this user.
+  if (rawId && userRowIdPrefix && !rawId.startsWith(userRowIdPrefix)) {
+    throw new Error(`Job id "${rawId}" does not belong to your account — a new id will be generated instead.`)
+  }
+
+  const id =
+    rawId ||
+    (await prisma.$transaction(async (tx) =>
+      makeUserRowId(dbId, 'j', tx as any),
+    ))
+
+  const row = await prisma.userJob.create({
+    data: {
+      id,
+      userId: dbId,
+      name: data.name.trim(),
+      color: data.color,
+      rate: data.rate,
+      nightRate: data.nightRate,
+      sortOrder: data.sortOrder ?? 0,
+    },
+  })
+  revalidatePath('/dashboard')
+  return mapJob(row)
 }
 
 /** Patch a job's mutable fields by id (must belong to the current user). */

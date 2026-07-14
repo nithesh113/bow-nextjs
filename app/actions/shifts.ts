@@ -3,6 +3,7 @@
 import { Prisma } from '@prisma/client'
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser } from '@/lib/auth/session'
+import { makeUserRowId } from '@/lib/ids'
 import { revalidatePath } from 'next/cache'
 import type { Break } from '@/types'
 
@@ -112,28 +113,19 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
     throw new Error(`Too many shifts in one request (max ${MAX_PER_REQUEST})`)
   }
 
-  const data = list.map((s) => {
+  // Pre-validate all inputs and build the payload array first so any
+  // validation error fails the whole request before touching the DB.
+  const payload = list.map((s) => {
     const err = validateInput(s)
     if (err) throw new Error(err)
-    // Normalize workDetails: trim and treat empties as null so the DB
-    // stays clean. We deliberately do NOT enforce a max length server-side
-    // (the modal enforces 1000 chars on the client); Postgres TEXT would
-    // accept more anyway, and we want to never silently truncate user notes.
     const wd =
       typeof s.workDetails === 'string' && s.workDetails.trim().length > 0
         ? s.workDetails.trim()
         : null
-    // Validate and trim actual-times if supplied.
     const actualLogin =
       s.actualLogin && isHHMM(s.actualLogin) ? s.actualLogin : null
     const actualLogout =
       s.actualLogout && isHHMM(s.actualLogout) ? s.actualLogout : null
-    // Prisma's NullableJson field requires either:
-    //   - `Prisma.JsonNull` for explicit JSON null in the DB, or
-    //   - a value typed as JSON-serializable (`Prisma.InputJsonValue`).
-    // We cast our `Break[]` to `Prisma.InputJsonValue` because TS cannot
-    // structurally prove an arbitrary array of objects conforms to the
-    // JSON input type — runtime serialization is what makes it safe.
     const actualBreaks: Prisma.InputJsonValue | typeof Prisma.JsonNull =
       Array.isArray(s.actualBreaks) && s.actualBreaks.length > 0
         ? (s.actualBreaks as unknown as Prisma.InputJsonValue)
@@ -154,34 +146,22 @@ export async function createShifts(input: { shifts: NewShiftInput[] }): Promise<
     }
   })
 
-  // createMany does not return rows on most Postgres versions — fetch back explicitly.
-  const rows = await prisma.userShift.createMany({ data })
-  if (!rows || rows.count === 0) return []
-
-  // Fetch the inserted rows for this user matching any of the given dates.
-  const dates = Array.from(new Set(data.map((d) => d.date.getTime())))
-  const fetched = await prisma.userShift.findMany({
-    where: {
-      userId,
-      date: { in: data.map((d) => d.date) },
-    },
-    orderBy: [{ date: 'asc' }, { createdAt: 'asc' }],
+  // Generate user-prefixed ids for every row, then insert inside a
+  // transaction so all-or-nothing.
+  const rows = await prisma.$transaction(async (tx) => {
+    const ids = await Promise.all(
+      payload.map(() => makeUserRowId(userId, 's', tx as any)),
+    )
+    const created = await Promise.all(
+      payload.map((p, i) =>
+        (tx as any).userShift.create({ data: { id: ids[i], ...p } }),
+      ),
+    )
+    return created
   })
-  // (Deduplicate any pre-existing rows; only return the ones we just inserted.)
-  // We can't perfectly distinguish just-inserted rows without timestamps, but
-  // for the modal's success path what matters is: we have *some* row per date.
-  // Deduplicate: skip rows we've already returned (same date+jobId+start+end).
-    // Using a string key so (date + jobId + start) and (date + jobId2 + start)
-    // are distinct — multiple shifts per day are all preserved.
-    const seen = new Set<string>()
-    return fetched
-      .filter((r: { date: Date; jobId: string; start: string }) => {
-        const key = `${r.date.toISOString().slice(0, 10)}\u0001${r.jobId}\u0001${r.start}`
-        if (seen.has(key)) return false
-        seen.add(key)
-        return true
-      })
-      .map(mapShift)
+
+  revalidatePath('/dashboard')
+  return rows.map(mapShift)
 }
 
 /** Fetch DB-backed shifts for a single calendar month (year, 1-indexed month). */

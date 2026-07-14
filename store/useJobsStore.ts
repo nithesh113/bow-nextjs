@@ -9,8 +9,6 @@
  *  - No `persist` middleware — the DB is the durable copy.
  *  - `fetchJobsFromDB()` loads on session start (idempotent; safe to call
  *    from any consumer).
- *  - `seedJobsIfEmpty()` runs once on first dashboard mount for new users
- *    so they don't see an empty job list.
  *  - Optimistic local updates go ahead of the server call; failures roll
  *    back to the prior state.
  */
@@ -21,7 +19,6 @@ import {
   createJob as serverCreateJob,
   updateJob as serverUpdateJob,
   deleteJob as serverDeleteJob,
-  seedDefaultJobsIfEmpty,
   type JobRow,
   type JobData,
 } from '@/app/actions/jobs'
@@ -33,8 +30,6 @@ interface JobsState {
 
   /** Hydrate from the DB (called once on session start). */
   fetchJobsFromDB: () => Promise<void>
-  /** Idempotent — seeds the default McDonald's + Big Boy jobs on a new user's first run. */
-  seedJobs: () => Promise<void>
 
   /** Mutating actions (all hit the server then update local state). */
   addJob: (job: Omit<Job, 'id'> & { id?: string }) => Promise<void>
@@ -73,26 +68,12 @@ export const useJobsStore = create<JobsState>((set, get) => ({
       set({ jobs: rows.map(rowToJob), jobsLoading: false })
     } catch (err: unknown) {
       const e = err as { status?: number; message?: string }
-      // 401/403 are normal during unauthenticated sessions; don't surface
-      // them as user-visible errors. Anything else is logged + stored.
       if (e?.status === 401 || e?.status === 403) {
         set({ jobs: [], jobsLoading: false })
         return
       }
       console.error('[useJobsStore] fetchJobsFromDB failed', err)
       set({ jobsError: e?.message || 'Failed to load jobs', jobsLoading: false })
-    }
-  },
-
-  seedJobs: async () => {
-    try {
-      const rows = await seedDefaultJobsIfEmpty()
-      set({ jobs: rows.map(rowToJob) })
-    } catch (err) {
-      // 401/403 are normal during unauthenticated sessions; otherwise log.
-      const e = err as { status?: number; message?: string }
-      if (e?.status === 401 || e?.status === 403) return
-      console.error('[useJobsStore] seedJobs failed', err)
     }
   },
 

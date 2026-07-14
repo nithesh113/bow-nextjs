@@ -7,6 +7,7 @@ const SESSION_DAYS = 30
 
 export type AuthUser = {
   id: string
+  userId: string | null
   name: string
   email: string
   currency: string | null
@@ -82,6 +83,7 @@ export async function getCurrentUser(): Promise<AuthUser | null> {
       user: {
         select: {
           id: true,
+          userId: true,
           name: true,
           email: true,
           currency: true,

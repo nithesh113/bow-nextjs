@@ -2,6 +2,7 @@
 
 import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser } from '@/lib/auth/session'
+import { makeUserRowId } from '@/lib/ids'
 import { revalidatePath } from 'next/cache'
 
 // ── Types ──────────────────────────────────────────
@@ -68,8 +69,13 @@ export async function createTemplate(data: TemplateData): Promise<TemplateRow> {
     typeof data.workDetails === 'string' && data.workDetails.trim().length > 0
       ? data.workDetails.trim()
       : null
+  // Generate user-prefixed id inside a transaction.
+  const id = await prisma.$transaction(async (tx) =>
+    makeUserRowId(userId, 'tpl', tx as any),
+  )
   const row = await prisma.userTemplate.create({
     data: {
+      id,
       userId,
       name: data.name,
       days: data.days,
