@@ -36,7 +36,7 @@ const hasAll = args.includes('--all')
 const userFlagIdx = args.indexOf('--user')
 const userId = userFlagIdx >= 0 ? args[userFlagIdx + 1] : null
 
-// Tables we allow to be cleared
+// Tables we allow to be cleared (full reset — wipes users + auth too)
 const ALLOWED = new Set([
   'user_shifts',
   'user_templates',
@@ -46,16 +46,18 @@ const ALLOWED = new Set([
   'user_budget_goals',
   'user_jobs',
   'user_feedback',
-])
-
-// FORBIDDEN — must NEVER be wiped by this script
-const FORBIDDEN = new Set([
   'users',
   'sessions',
   'password_reset_tokens',
   'verification_tokens',
   'admin_audit_log',
   'email_logs',
+])
+
+// ONLY the migration registry is preserved — Vercel's deploy pipeline
+// uses _prisma_migrations to know which migrations have already been
+// applied; deleting it would break future deploys.
+const FORBIDDEN = new Set([
   '_prisma_migrations',
 ])
 
@@ -74,11 +76,16 @@ if (!hasAll && !userId) {
   console.log(`
 clear-test-data.mjs — DRY-RUN MODE (no deletes will run)
 
-Wipe per-user test data on this Neon DB. USERS + AUTH tables are preserved.
+Wipe data on this Neon DB. PRESERVES ONLY _prisma_migrations so the
+next Vercel deploy still recognizes which migrations have already
+been applied.
 
 Args:
-  --all               Delete every row in the 8 allowed tables
-  --user <uuid>       Delete only rows for the given userId
+  --all               Delete every row in every allowed table
+                        (every user, every session, every record)
+  --user <uuid>       Delete only tables that have rows for the
+                        given userId. Sessions/tokens/audit/email
+                        tables are still wiped globally under --user.
   (no flag)           Dry-run: print counts only, don't run any DELETE
 
 Examples:
@@ -124,9 +131,11 @@ async function countUserJobs(userIdOrUndefined) {
     user_budget_goals:      await safeCount('userBudgetGoal', where),
     user_jobs:              await safeCount('userJob', where),
     user_feedback:          await safeCount('userFeedback', where),
-    // preserved
+    // auth/admin/email — wiped under --all or --user but NOT scoped by userId
     users:                  await safeCount('user', {}),
     sessions:               await safeCount('session', {}),
+    password_reset_tokens:  await safeCount('passwordResetToken', {}),
+    verification_tokens:    await safeCount('verificationToken', {}),
     admin_audit_log:        await safeCount('adminAuditLog', {}),
     email_logs:             await safeCount('emailLog', {}),
   }
@@ -136,11 +145,20 @@ async function wipeForUser(userIdOrUndefined) {
   const where = userIdOrUndefined ? { userId: userIdOrUndefined } : {}
   const results = {}
 
+  // FK-safe order. Children of FK → parents first.
+  // (1) Sessions & tokens — usually no FK refs to keep, but session.userId → User
+  //     cascades on User delete (Cascade in schema), so deleting sessions first
+  //     before users keeps the SQL tidy.
+  results.sessions              = await safeDeleteMany('session', {})
+  results.password_reset_tokens = await safeDeleteMany('passwordResetToken', {})
+  results.verification_tokens   = await safeDeleteMany('verificationToken', {})
+
+  // (2) User-scoped data (FK → User, onDelete: Cascade — so everything
+  // below would actually go with users, but we delete explicitly first so
+  // any hooks/logging fires per-table).
   results.user_shifts     = await safeDeleteMany('userShift', where)
   results.user_templates  = await safeDeleteMany('userTemplate', where)
   results.expenses        = await safeDeleteMany('expense', where)
-  // Categories: two-pass so child→parent SetNull edges still let us
-  // delete parents without violating self-FK.
   results.expense_categories_children = await safeDeleteMany('expenseCategory', {
     ...where, parentId: { not: null },
   })
@@ -151,6 +169,14 @@ async function wipeForUser(userIdOrUndefined) {
   results.user_budget_goals       = await safeDeleteMany('userBudgetGoal', where)
   results.user_jobs               = await safeDeleteMany('userJob', where)
   results.user_feedback           = await safeDeleteMany('userFeedback', where)
+
+  // (3) Audit/email logs (adminUserId → User, no Cascade). Wipe before users
+  //     so the FK doesn't matter.
+  results.admin_audit_log = await safeDeleteMany('adminAuditLog', {})
+  results.email_logs      = await safeDeleteMany('emailLog', {})
+
+  // (4) Finally wipe users — under --user, scoped; under --all, full.
+  results.users = await safeDeleteMany('user', {})
   return results
 }
 
