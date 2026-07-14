@@ -92,8 +92,18 @@ export async function getJobs(): Promise<JobRow[]> {
  */
 export async function seedDefaultJobsIfEmpty(): Promise<JobRow[]> {
   const userId = await requireUserId()
-  const existing = await prisma.userJob.findMany({ where: { userId } })
-  if (existing.length > 0) return existing.map(mapJob)
+  // Always fetch the user's current jobs first — even if createMany below
+  // returns count:0 (e.g. all-duplicate → skipDuplicates), we still want to
+  // hand back the existing rows so the caller's `set({jobs: ...})` doesn't
+  // wipe a populated store on every re-mount. (Race with fetchJobsFromDB
+  // was triggering this empty-overwrite on Vercel.)
+  const existingRows = await prisma.userJob.findMany({
+    where: { userId },
+    orderBy: [{ sortOrder: 'asc' }, { createdAt: 'asc' }],
+  })
+  if (existingRows.length > 0) {
+    return existingRows.map(mapJob)
+  }
 
   const created = await prisma.userJob.createMany({
       data: [
@@ -118,7 +128,9 @@ export async function seedDefaultJobsIfEmpty(): Promise<JobRow[]> {
       ],
       skipDuplicates: true, // P2002 if j1/j2 already exist → safe for re-import
     })
-  if (!created || created.count === 0) return []
+  // Don't bail on count:0 — even an all-skipDuplicates insert is fine, just
+  // re-fetch whatever now lives in the DB. Returning [] here used to wipe
+  // the client store on every concurrent seed-then-fetch race.
   revalidatePath('/dashboard')
   const rows = await prisma.userJob.findMany({
     where: { userId },

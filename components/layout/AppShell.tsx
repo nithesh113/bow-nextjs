@@ -40,14 +40,19 @@ export default function AppShell({ user }: { user: AuthUser }) {
 
   // Single boot: hook up focus/visibility/event listeners that bust
   // the expense cache so the next view rendering refetches from DB.
-  // Also seed the default jobs the first time for a fresh user account,
-  // then hydrate jobs + templates from the DB.
+  //
+  // SEQUENCED: seedDefaults first MUST complete before fetchJobsFromDB so
+  // a re-mount on Vercel can't race a fresh DB read against a still-running
+  // createMany (whose post-createMany `prisma.userJob.findMany` would have
+  // returned []).
   useEffect(() => {
     startExpensesInvalidationListeners()
-    void seedJobs()
-    void fetchJobsFromDB()
-    void fetchTemplatesFromDB()
-    syncShiftsFromDB()
+    void (async () => {
+      try { await seedJobs() } catch (err) { console.warn('[AppShell.boot] seedJobs failed', err) }
+      try { await fetchJobsFromDB() } catch (err) { console.warn('[AppShell.boot] fetchJobsFromDB failed', err) }
+      try { await fetchTemplatesFromDB() } catch (err) { console.warn('[AppShell.boot] fetchTemplatesFromDB failed', err) }
+      try { await syncShiftsFromDB() } catch (err) { console.warn('[AppShell.boot] syncShiftsFromDB failed', err) }
+    })()
   }, [syncShiftsFromDB, fetchJobsFromDB, seedJobs, fetchTemplatesFromDB])
 
   return (
