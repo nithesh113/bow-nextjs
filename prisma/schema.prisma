@@ -17,6 +17,12 @@ model User {
   id                  String               @id @default(uuid()) @db.Uuid
   name                String
   email               String               @unique
+  /// Public, case-insensitive unique handle — login + sharing.
+  /// Twitter-style: 3–30 chars, [a-zA-Z0-9_], lowercased on store.
+  /// Uniqueness is enforced via a case-insensitive expression index
+  /// in the migration (`users_user_id_lower_unique_idx`), not via
+  /// `@unique` (Prisma can't express expression indexes natively).
+  userId              String?              @map("user_id")
   passwordHash        String               @map("password_hash")
   currency            String?              @default("JPY")
   location            String?              @default("Japan")

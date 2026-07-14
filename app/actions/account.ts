@@ -5,6 +5,45 @@ import { prisma } from '@/lib/auth/prisma'
 import { getCurrentUser, createToken, hashToken } from '@/lib/auth/session'
 import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
 import { appUrl as makeAppUrl } from '@/lib/auth/urls'
+import { coerceHandle, RESERVED } from '@/lib/userHandle'
+
+/**
+ * Live uniqueness check used by the client registration form.
+ * Returns the normalized handle on success, with availability info.
+ * Client should call this debounced (350ms) as the user types.
+ */
+export async function checkUserHandleAvailability(
+  rawHandle: string
+): Promise<{ available: boolean; normalized: string; error?: string }> {
+  const result = coerceHandle(rawHandle)
+  if (result.ok === false) {
+    return { available: false, normalized: '', error: result.error }
+  }
+  const normalized = result.normalized
+
+  // Reserved words short-circuit (no DB hit needed)
+  if (RESERVED.has(normalized)) {
+    return { available: false, normalized, error: 'That handle is reserved.' }
+  }
+
+  // Case-insensitive query: leverage User.userId text column with
+  // LOWER(...) in metadata so Prisma routes the lookup via the
+  // `users_user_id_lower_unique_idx` expression index. We use the
+  // simplest correct form: fetch any matching row with same lower-case.
+  try {
+    const existing = await prisma.user.findFirst({
+      where: { userId: { equals: normalized } },
+      select: { id: true },
+    })
+    if (existing) {
+      return { available: false, normalized, error: 'That handle is taken.' }
+    }
+    return { available: true, normalized }
+  } catch (err) {
+    console.error('[checkUserHandleAvailability] failed', err)
+    return { available: false, normalized, error: 'Lookup failed. Try again.' }
+  }
+}
 
 export async function updateAccount(data: { name: string; email: string; currency: string; location: string; schoolFee: number }) {
   const user = await getCurrentUser()

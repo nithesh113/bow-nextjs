@@ -10,6 +10,7 @@ import { sendVerificationEmail } from '@/lib/auth/verify-email-temp'
 import { sendPasswordChangedEmail } from '@/lib/auth/reset-secuess'
 import { prisma } from '@/lib/auth/prisma'
 import { appUrl as makeAppUrl } from '@/lib/auth/urls'
+import { coerceHandle } from '@/lib/userHandle'
 
 export type AuthActionState = {
   error?: string
@@ -40,11 +41,26 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
   const email = normalizeEmail(readString(formData, 'email'))
   const password = String(formData.get('password') || '')
   const confirmPassword = String(formData.get('confirmPassword') || '')
+  const rawHandle = readString(formData, 'userId')
 
   if (!name || !email || !password) return { error: 'Fill in all fields.' }
   if (password !== confirmPassword) return { error: 'Passwords do not match.' }
   if (password.length < 8) return { error: 'Password must be at least 8 characters.' }
   if (getStrength(password) < 3) return { error: 'Password is too weak. Use a mix of uppercase, lowercase, numbers, and symbols.' }
+
+  // Optional userId (handle). If provided, validate + reserve.
+  let normalizedHandle: string | null = null
+  if (rawHandle.length > 0) {
+    const h = coerceHandle(rawHandle)
+    if (h.ok === false) return { error: h.error }
+    normalizedHandle = h.normalized
+    // Server-side uniqueness re-check (live UI check + race guard).
+    const existingHandle = await prisma.user.findFirst({
+      where: { userId: { equals: normalizedHandle } },
+      select: { id: true },
+    })
+    if (existingHandle) return { error: 'That handle is already taken. Pick another.' }
+  }
 
   const existing = await prisma.user.findUnique({ where: { email }, select: { id: true } })
   if (existing) return { error: 'An account already exists for this email.' }
@@ -55,6 +71,7 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
       name,
       email,
       passwordHash,
+      userId: normalizedHandle,
     },
     select: { id: true },
   })
@@ -84,19 +101,40 @@ export async function registerAction(_: AuthActionState, formData: FormData): Pr
 }
 
 export async function loginAction(_: AuthActionState, formData: FormData): Promise<AuthActionState> {
-  const email = normalizeEmail(readString(formData, 'email'))
+  const rawIdentifier = readString(formData, 'identifier') || readString(formData, 'email')
   const password = String(formData.get('password') || '')
 
-  if (!email || !password) return { error: 'Enter your email and password.' }
+  if (!rawIdentifier || !password) return { error: 'Enter your handle or email and password.' }
 
-  const user = await prisma.user.findUnique({
-    where: { email },
+  // Identify by either email or normalized userId (handle).
+  // Email wins on direct matches. If no email row, try handle via
+  // case-insensitive comparison through the LOWER expression index.
+  let user: { id: string; passwordHash: string } | null = null
+
+  // 1) Try email (lowercase)
+  const lowerIdentifier = rawIdentifier.toLowerCase()
+  user = await prisma.user.findUnique({
+    where: { email: lowerIdentifier },
     select: { id: true, passwordHash: true },
   })
-  if (!user) return { error: 'Invalid email or password.' }
+
+  // 2) If no email match, try handle (after stripping non-handle chars).
+  //    We don't fully enforce format here — auth should still surface
+  //    "invalid credentials" for any shape the user could type.
+  if (!user && /^[A-Za-z0-9_]+$/.test(rawIdentifier.trim())) {
+    const h = coerceHandle(rawIdentifier)
+    if (h.ok) {
+      user = await prisma.user.findFirst({
+        where: { userId: { equals: h.normalized } },
+        select: { id: true, passwordHash: true },
+      })
+    }
+  }
+
+  if (!user) return { error: 'Invalid handle/email or password.' }
 
   const valid = await bcrypt.compare(password, user.passwordHash)
-  if (!valid) return { error: 'Invalid email or password.' }
+  if (!valid) return { error: 'Invalid handle/email or password.' }
 
   await createSession(user.id)
   redirect('/dashboard')
