@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
+import AuthErrorBoundary from './AuthErrorBoundary'
 
 type AuthShellProps = {
   title: string
@@ -37,7 +38,9 @@ export default function AuthShell({
           <p style={{ color: 'var(--text-secondary)', marginTop: 8, fontSize: 14 }}>{subtitle}</p>
         </div>
 
-        <Card style={{ padding: 18 }}>{children}</Card>
+        <Card style={{ padding: 18 }}>
+          <AuthErrorBoundary>{children}</AuthErrorBoundary>
+        </Card>
 
         <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--muted)', fontSize: 13 }}>
           {footerText}{' '}
