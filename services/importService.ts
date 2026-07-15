@@ -47,11 +47,9 @@ export interface ImportResult {
   mode: 'replace' | 'merge'
   format: 'json' | 'csv'
   warnings: string[]
-  /** Per-domain failures caught by the dispatcher. Surfaces in toast so silent-passes become visible. */
   failures: string[]
 }
 
-/** Hard cap on import file size. */
 const MAX_FILE_BYTES = 25_000_000
 
 // ── Format sniffing ────────────────────────────────────────
@@ -64,7 +62,6 @@ function looksLikeCsv(text: string): boolean {
   if (!first) return false
   return first.startsWith('# section:') || first.split(',').length >= 3
 }
-
 
 // ── Normalisers ────────────────────────────────────────────
 
@@ -86,7 +83,6 @@ function dedupSignature(input: {
   ].join('\u0001')
 }
 
-/** Does a value look like a v6.3 day-row wrapper? */
 function looksLikeDayRow(x: unknown): x is { date: string; shifts: unknown[] } {
   if (!x || typeof x !== 'object') return false
   const r = x as Record<string, unknown>
@@ -95,7 +91,6 @@ function looksLikeDayRow(x: unknown): x is { date: string; shifts: unknown[] } {
     Array.isArray(r.shifts)
 }
 
-/** Detect a raw shift row: {jobId:string, start:'HH:MM', end:'HH:MM'}. */
 function looksLikeShiftRow(x: unknown): x is { jobId: string; start: string; end: string } {
   if (!x || typeof x !== 'object') return false
   const r = x as Record<string, unknown>
@@ -104,30 +99,19 @@ function looksLikeShiftRow(x: unknown): x is { jobId: string; start: string; end
     typeof r.end === 'string' && r.end.length > 0 && /^\d{2}:\d{2}$/.test(r.end)
 }
 
-/**
- * Returns a shift row only if it has valid non-empty start+end times.
- * Used to filter out bad data from old exports (e.g. { start: '', end: '' }).
- */
-function isValidShift(x: unknown): x is { jobId: string; start: string; end: string; breaks?: unknown[]; workDetails?: string } {
+function isValidShift(x: unknown): x is { jobId: string; start: string; end: string } {
   return looksLikeShiftRow(x)
 }
 
 /**
  * Canonicalise data.shifts into Record<dateKey, Shift[]>.
- *
- * Handles both:
- *   v6.4  { "2026-04-25": [{jobId,start,end,...}], … }
- *   v6.3  { "0": { date: "2026-04-25", shifts: [{jobId,start,end,breaks}] }, … }
- *
- * Dedupes within each date by (jobId, start, end) so duplicate
- * localStorage rows don't create calendar noise.
+ * Handles v6.4 { "2026-04-25": [...] } and v6.3 { "0": { date, shifts } }.
  */
 function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, unknown[]> {
   const out: Record<string, unknown[]> = {}
 
   for (const k of Object.keys(raw ?? {})) {
     const v = raw[k]
-    // v6.4 → pass-through
     if (Array.isArray(v)) {
       for (const row of v) {
         if (looksLikeShiftRow(row)) { (out[k] ??= []).push(row); continue }
@@ -138,13 +122,11 @@ function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, unkn
       }
       continue
     }
-    // v6.3 day-row wrapper
     if (looksLikeDayRow(v)) {
       (out[v.date] ??= [])
       for (const s of v.shifts ?? []) if (looksLikeShiftRow(s)) out[v.date].push(s)
       continue
     }
-    // defensive fallback for unusual nested shapes
     if (v && typeof v === 'object' && Array.isArray((v as any).shifts)) {
       const dk = (v as any).date ?? k
       ;(out[dk] ??= [])
@@ -152,7 +134,6 @@ function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, unkn
     }
   }
 
-  // Dedupe inside each date: keep only the first (jobId, start, end).
   for (const dk of Object.keys(out)) {
     const seen = new Set<string>()
     const dedup: unknown[] = []
@@ -170,13 +151,8 @@ function normalizeShiftsShape(raw: Record<string, unknown>): Record<string, unkn
 }
 
 /**
- * Reconstruct shifts from a v6.3 entries[] backup when no shifts dict
- * exists. Entries carry aggregated hours: {date, jobs:[{jobId,dayHours,nightHours}]}.
- *
- * We synthesise:
- *   Day:   09:00 → 09:00 + floor(dayHours)
- *   Night: 22:30 → 22:30 + ceil(nightHours+0.5)
- * This is lossy — breaks and exact start/end are lost.
+ * Synthesise shifts from v6.3 entries[]: { date, jobs:[{jobId,dayHours,nightHours}] }.
+ * Lossy — exact times and breaks are not preserved.
  */
 function synthShiftsFromEntries(entries: unknown[]): Record<string, unknown[]> {
   const out: Record<string, unknown[]> = {}
@@ -193,20 +169,10 @@ function synthShiftsFromEntries(entries: unknown[]): Record<string, unknown[]> {
       if (day > 0) {
         const startH = 9
         const endH = Math.max(startH + 1, startH + Math.floor(day))
-        out[dk].push({
-          jobId: (j as any).jobId as string,
-          start: pad(startH) + ':00',
-          end:   pad(endH)   + ':00',
-          breaks: [],
-        })
+        out[dk].push({ jobId: (j as any).jobId, start: pad(startH) + ':00', end: pad(endH) + ':00', breaks: [] })
       }
       if (night > 0) {
-        out[dk].push({
-          jobId: (j as any).jobId as string,
-          start: '22:30',
-          end:   pad(22 + Math.ceil(night + 0.5)) + ':00',
-          breaks: [],
-        })
+        out[dk].push({ jobId: (j as any).jobId, start: '22:30', end: pad(22 + Math.ceil(night + 0.5)) + ':00', breaks: [] })
       }
     }
   }
@@ -246,77 +212,54 @@ export async function importData(
   if (detected === 'csv') {
     data = csvSectionsToBackupData(text)
   } else {
-      try {
-        data = JSON.parse(text) as Partial<BackupData>
-        console.warn('[importData] raw parse complete, schemaVersion:', data.schemaVersion, 'jobs type:', typeof data.jobs, 'isArray:', Array.isArray(data.jobs), 'jobs len:', (data.jobs as any[])?.length)
-      } catch (err) {
-        throw new Error(`JSON parse failed: ${(err as Error).message}. Did you mean CSV?`)
-      }
-      if (!data || typeof data !== 'object' || (!data.jobs && !data.shifts)) {
-        throw new Error('Invalid backup: missing jobs and shifts.')
-      }
+    try {
+      data = JSON.parse(text) as Partial<BackupData>
+    } catch (err) {
+      throw new Error(`JSON parse failed: ${(err as Error).message}. Did you mean CSV?`)
     }
+    if (!data || typeof data !== 'object' || (!data.jobs && !data.shifts)) {
+      throw new Error('Invalid backup: missing jobs and shifts.')
+    }
+  }
 
   // ── version tolerance ───────────────────────────────────
-    const version = (data.schemaVersion ?? '6.3.0') as string
-    if (version !== '6.3.0' && version !== '6.4.0') {
-      throw new Error(`Backup file version (${version}) is too new. Update the app.`)
-    }
-    if (version === '6.3.0' && !data.shifts && (data as any).entries) {
-      warnings.push('v6.3 entries-only backup — shifts synthesised, times are lossy.')
-    }
+  const version = (data.schemaVersion ?? '6.3.0') as string
+  if (version !== '6.3.0' && version !== '6.4.0') {
+    throw new Error(`Backup file version (${version}) is too new. Update the app.`)
+  }
+  if (version === '6.3.0' && !data.shifts && (data as any).entries) {
+    warnings.push('v6.3 entries-only backup — shifts synthesised, times are lossy.')
+  }
 
-    // ── shift normalisation (THE FIX) ────────────────────────
-    // Always run before any downstream processing so both v6.3
-    // and v6.4 shapes collapse into a single canonical dict.
-    const preNormKeys = data.shifts ? Object.keys(data.shifts) : []
-    console.warn('[importData]....', data)
-    console.warn('[importData] pre-normalize shifts keys:', preNormKeys.slice(0, 5), 'total:', preNormKeys.length)
-    if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
-      data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
-    }
-    const postNormKeys = data.shifts ? Object.keys(data.shifts) : []
-    console.warn('[importData] post-normalize shifts keys:', postNormKeys.slice(0, 5), 'total:', postNormKeys.length)
+  // ── shift normalisation ─────────────────────────────────
+  // Always run before any downstream processing so both v6.3
+  // and v6.4 shapes collapse into a single canonical dict.
+  if (data.shifts && typeof data.shifts !== 'string' && !Array.isArray(data.shifts)) {
+    data.shifts = normalizeShiftsShape(data.shifts as unknown as Record<string, unknown>) as any
+  }
 
-    // Fallback: if file has entries[] but no v6.4-style shifts dict,
-    // reconstruct losses from entries via synthShiftsFromEntries.
-    const rawEntries = (data as any).entries as unknown[] | undefined
-    const hadShifts = !!(data.shifts && Object.keys(data.shifts).length > 0)
-    console.warn('[importData] rawEntries count:', rawEntries?.length ?? 0, 'hadShifts:', hadShifts)
-
-    // DEBUG: log parsed data shape
-    console.warn('[importData] parsed data:', {
-      version: data.schemaVersion,
-      hasJobs: Array.isArray(data.jobs),
-      jobsCount: (data.jobs as unknown[])?.length ?? 0,
-      hasShifts: !!data.shifts,
-      shiftsKeys: postNormKeys.slice(0, 3),
-      hasEntries: Array.isArray(rawEntries),
-      entriesCount: rawEntries?.length ?? 0,
-      firstEntry: rawEntries?.[0],
-      hadShifts,
-    })
+  // Fallback: reconstruct shifts from v6.3 entries[].
+  const rawEntries = (data as any).entries as unknown[] | undefined
+  const hadShifts = !!(data.shifts && Object.keys(data.shifts).length > 0)
 
   if (!hadShifts && Array.isArray(rawEntries)) {
-      ;(data as any).shifts = synthShiftsFromEntries(rawEntries)
-      // DEBUG: log synthesis result
-      const synthResult: Record<string, unknown[]> = (data as any).shifts
-      console.warn('[importData] synthShiftsFromEntries result:', JSON.stringify(synthResult))
-      if (Object.keys(synthResult).length > 0) {
-        warnings.push(
-          `Reconstructed ${Object.keys(synthResult).length} day(s) from v6.3 entries[] — times approximated, verify on calendar.`
-        )
-      }
-      if (rawEntries.length > 0 && Object.keys(synthResult).length === 0) {
-        warnings.push(
-          `Reconstructed 0 day(s) of work-hours from a v6.3 entries[] backup. Times are approximated — verify on the calendar.`
-        )
-      }
-    } else if (!hadShifts) {
-      warnings.push('Backup contains no shift data.')
+    ;(data as any).shifts = synthShiftsFromEntries(rawEntries)
+    const synthResult: Record<string, unknown[]> = (data as any).shifts
+    if (Object.keys(synthResult).length > 0) {
+      warnings.push(
+        `Reconstructed ${Object.keys(synthResult).length} day(s) from v6.3 entries[] — times approximated, verify on calendar.`
+      )
     }
+    if (rawEntries.length > 0 && Object.keys(synthResult).length === 0) {
+      warnings.push(
+        `Reconstructed 0 day(s) of work-hours from a v6.3 entries[] backup. Times are approximated — verify on the calendar.`
+      )
+    }
+  } else if (!hadShifts) {
+    warnings.push('Backup contains no shift data.')
+  }
 
-  // ── profile prefs ────────────────────────────────────────
+  // ── profile prefs ───────────────────────────────────────
   if (data.profile) {
     try {
       await applyProfilePrefs({
@@ -330,34 +273,32 @@ export async function importData(
   }
 
   // ── replace mode – wipe ─────────────────────────────────
-  // Wipe SEQUENTIALLY (not in parallel) so each delete fully completes
-  // before the next begins. Parallel deletes resolve before the DB has
-  // actually removed the rows, causing P2002 constraint violations when
-  // imports start immediately after.
-    if (mode === 'replace') {
-      const existingJobs = await getJobs()
-      for (const j of existingJobs) await serverDeleteJob(j.id).catch(() => null)
+  // Wipe SEQUENTIALLY so each delete fully completes before the next begins.
+  // Parallel deletes resolve before the DB actually removes rows, causing
+  // P2002 constraint violations when imports start immediately after.
+  if (mode === 'replace') {
+    const existingJobs = await getJobs()
+    for (const j of existingJobs) await serverDeleteJob(j.id).catch(() => null)
 
-      const existingTemplates = await getTemplates()
-      for (const t of existingTemplates) await serverDeleteTemplate(t.id).catch(() => null)
+    const existingTemplates = await getTemplates()
+    for (const t of existingTemplates) await serverDeleteTemplate(t.id).catch(() => null)
 
-      const shiftsState = useShiftsStore.getState().shifts
-      for (const dk of Object.keys(shiftsState)) await serverDeleteShiftsByDate(dk).catch(() => null)
+    const shiftsState = useShiftsStore.getState().shifts
+    for (const dk of Object.keys(shiftsState)) await serverDeleteShiftsByDate(dk).catch(() => null)
 
-      const existingGoals = await getBudgetGoals()
-      for (const g of existingGoals) await deleteBudgetGoal(g.id).catch(() => null)
+    const existingGoals = await getBudgetGoals()
+    for (const g of existingGoals) await deleteBudgetGoal(g.id).catch(() => null)
 
-      const monthKeys = Object.keys(data.expenses ?? {})
-      if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
-    }
+    const monthKeys = Object.keys(data.expenses ?? {})
+    if (monthKeys.length > 0) await replaceMonthsExpenses(monthKeys).catch(() => null)
+  }
 
-  // ── jobId map: name-match, DB-first ───────────────────────────────
-  // Loading the DB's existing jobs by NAME means:
-  //   1. duplicate imports don't create duplicate job rows
-  //   2. shifts backed by old audit IDs still resolve to the real job
-  //   3. we never depend on the random-id path that createJob hits on P2002
-  // Job rows only get inserted when no name match exists.
-  const jobIdMap = new Map<string, string>() // backup jobId → DB job.id
+  // ── jobId remap: strip old IDs, let server mint fresh ones ──────
+  // Strategy: don't pass id to createJob → server generates a fresh
+  // user-prefixed ID (e.g. nithesh_j1) for the importing user.
+  // Build a remap table { backupId → newDbId }, then update every
+  // shift/template jobId reference before inserting.
+  const jobIdMap = new Map<string, string>() // backup job.id → new DB job.id
   const dbJobsByName = new Map<string, string>() // name → DB job.id
 
   const jobsBefore = await getJobs()
@@ -365,7 +306,8 @@ export async function importData(
     const key = row.name?.trim().toLowerCase()
     if (key) dbJobsByName.set(key, row.id)
   }
-  // Pre-link any backup job whose name already exists in the DB.
+  // Pre-link: if a backup job has the same name as an existing DB job,
+  // the existing row is reused (safe for merge).
   for (const j of data.jobs ?? []) {
     const key = j.name?.trim().toLowerCase()
     if (!key) continue
@@ -373,16 +315,14 @@ export async function importData(
     if (existing) jobIdMap.set(j.id, existing)
   }
 
-  // ── jobs: only insert those NOT already present by name ────────────
+  // Create new jobs — id is NOT passed; server mints a fresh user-prefixed ID.
   let jobsInserted = 0
   for (const j of data.jobs ?? []) {
     const key = j.name?.trim().toLowerCase()
     if (!key) continue
-    // Already linked above? Skip insertion entirely.
-    if (jobIdMap.has(j.id)) continue
+    if (jobIdMap.has(j.id)) continue // already linked to existing job
     try {
       const created = await serverCreateJob({
-        id: j.id,
         name: j.name,
         color: j.color,
         rate: j.rate,
@@ -390,10 +330,13 @@ export async function importData(
       })
       if (created?.id) jobIdMap.set(j.id, created.id)
       jobsInserted++
-    } catch { /* P2002 etc. — role up to name-based match below */ }
+    } catch (err) {
+      console.warn('[importData] serverCreateJob failed for', j.name, err)
+    }
   }
-  // Final correctness sweep: pick up any inserts whose id may have been
-  // re-minted (random-id fallback) by re-querying the DB by name.
+
+  // Final sweep: pick up any inserts that may have had their ID re-minted
+  // by re-querying the DB by name.
   const jobsAfter = await getJobs()
   for (const row of jobsAfter) {
     const key = row.name?.trim().toLowerCase()
@@ -408,25 +351,33 @@ export async function importData(
   }
 
   // ── templates ─────────────────────────────────────────────
-    let templatesInserted = 0
-    if (Array.isArray(data.templates)) {
-      for (const t of data.templates) {
-        const mappedJobId = jobIdMap.get(t.jobId) ?? t.jobId
-        try {
-          await serverCreateTemplate({
-            name: t.name,
-            days: Array.isArray(t.days) ? t.days : [],
-            jobId: mappedJobId,
-            start: t.start,
-            end: t.end,
-            workDetails: (t as any).workDetails ?? null,
-          })
-          templatesInserted++
-        } catch { /* skip */ }
+  let templatesInserted = 0
+  if (Array.isArray(data.templates)) {
+    for (const t of data.templates) {
+      const mappedJobId = jobIdMap.get(t.jobId)
+      if (!mappedJobId) {
+        warnings.push(`Template "${t.name}" references unknown jobId "${t.jobId}" — skipped`)
+        continue
+      }
+      try {
+        await serverCreateTemplate({
+          name: t.name,
+          days: Array.isArray(t.days) ? t.days : [],
+          jobId: mappedJobId,
+          start: t.start,
+          end: t.end,
+          workDetails: (t as any).workDetails ?? null,
+        })
+        templatesInserted++
+      } catch (err) {
+        console.warn('[importData] serverCreateTemplate failed for', t.name, err)
       }
     }
+  }
 
-  // ── shifts (now always canonical) ────────────────────────
+  // ── shifts ────────────────────────────────────────────────
+  // Every shift's jobId MUST resolve via jobIdMap. If a shift references
+  // an unknown jobId it is logged and SKIPPED — no broken links written.
   const existingShifts = useShiftsStore.getState().shifts
   const shiftsByDate = (data.shifts ?? {}) as Record<string, unknown[]>
   const shiftInputs: NewShiftInput[] = []
@@ -435,24 +386,36 @@ export async function importData(
     const day = shiftsByDate[dk] ?? []
     const existingDay = existingShifts[dk] ?? []
     for (const s of day) {
+      const rawJobId = (s as any).jobId as string
+      const mappedJobId = jobIdMap.get(rawJobId)
+
+      if (!mappedJobId) {
+        warnings.push(
+          `Shift on ${dk} references unknown jobId "${rawJobId}" — skipped. ` +
+          `Ensure all jobs are imported before shifts.`
+        )
+        continue
+      }
+
       if (mode === 'merge') {
         const dup = existingDay.find(
-          (e) => e.jobId === (s as any).jobId && e.start === (s as any).start && e.end === (s as any).end
+          (e) => e.jobId === mappedJobId && e.start === (s as any).start && e.end === (s as any).end
         )
         if (dup) continue
       }
+
       shiftInputs.push({
-              date: dk,
-              jobId: jobIdMap.get((s as any).jobId as string) ?? (s as any).jobId as string ?? '',
-              start: (s as any).start as string ?? '00:00',
-              end:   (s as any).end   as string ?? '00:00',
-              actualLogin: (s as any).actualLogin ?? null,
-              actualLogout: (s as any).actualLogout ?? null,
-              actualBreaks: (s as any).actualBreaks ?? null,
-              workDetails: (s as any).workDetails ?? null,
-              templateId: (s as any).templateId ?? undefined,
-              source: (s as any).source ?? undefined,
-            })
+        date: dk,
+        jobId: mappedJobId,
+        start: (s as any).start ?? '00:00',
+        end: (s as any).end ?? '00:00',
+        actualLogin: (s as any).actualLogin ?? null,
+        actualLogout: (s as any).actualLogout ?? null,
+        actualBreaks: (s as any).actualBreaks ?? null,
+        workDetails: (s as any).workDetails ?? null,
+        templateId: (s as any).templateId ?? undefined,
+        source: (s as any).source ?? undefined,
+      })
     }
   }
 
@@ -461,7 +424,9 @@ export async function importData(
     for (let i = 0; i < shiftInputs.length; i += chunkSize) {
       try {
         await serverCreateShifts({ shifts: shiftInputs.slice(i, i + chunkSize) })
-      } catch { /* chunk failure — skip */ }
+      } catch (err) {
+        console.warn('[importData] serverCreateShifts chunk failed', err)
+      }
     }
   }
 
@@ -531,17 +496,17 @@ export async function importData(
         if (!catId) continue
         const sig = dedupSignature({
           categoryId: catId,
-          amount: Number((e as any).amount),
-          date: typeof (e as any).date === 'string' ? ((e as any).date as string) : String((e as any).date),
-          note: typeof (e as any).note === 'string' ? ((e as any).note as string) : '',
-        } as any)
+          amount: Number(e.amount),
+          date: typeof e.date === 'string' ? e.date : String(e.date),
+          note: typeof e.note === 'string' ? e.note : '',
+        })
         if (mode === 'merge' && monthSigs?.has(sig)) continue
         bulkInputs.push({
           categoryId: catId,
-          amount: Number((e as any).amount),
-          date: typeof (e as any).date === 'string' ? ((e as any).date as string) : String((e as any).date),
-          note: typeof (e as any).note === 'string' ? ((e as any).note as string) : '',
-        } as any)
+          amount: Number(e.amount),
+          date: typeof e.date === 'string' ? e.date : String(e.date),
+          note: typeof e.note === 'string' ? e.note : '',
+        })
       }
     }
 
