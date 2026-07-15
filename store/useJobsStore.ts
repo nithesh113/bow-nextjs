@@ -20,7 +20,6 @@ import {
   updateJob as serverUpdateJob,
   deleteJob as serverDeleteJob,
   type JobRow,
-  type JobData,
 } from '@/app/actions/jobs'
 
 interface JobsState {
@@ -51,11 +50,6 @@ function rowToJob(row: JobRow): Job {
   }
 }
 
-/** Mint a fresh client-side job id (same shape the modal used to generate locally). */
-function newJobId(): string {
-  return `j_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
-}
-
 export const useJobsStore = create<JobsState>((set, get) => ({
   jobs: [],
   jobsLoading: false,
@@ -78,35 +72,30 @@ export const useJobsStore = create<JobsState>((set, get) => ({
   },
 
   addJob: async (job) => {
-    // Optimistic — give the UI an instant row, then let the DB id win.
-    const optimisticId = job.id || newJobId()
-    const optimisticJob: Job = { ...job, id: optimisticId }
+    // Optimistic: give the UI an instant row with a temp id, then replace
+    // with the server's authoritative user-prefixed id.
+    const tempId = job.id || `temp_${Date.now()}`
+    const optimisticJob: Job = { ...job, id: tempId }
     set((s) => ({ jobs: [...s.jobs, optimisticJob] }))
     try {
-      const data: JobData = {
-        id: optimisticId,
-        name: optimisticJob.name,
-        color: optimisticJob.color,
-        rate: optimisticJob.rate,
-        nightRate: optimisticJob.nightRate,
-      }
-      const row = await serverCreateJob(data)
-      const created = rowToJob(row)
-      // Replace the optimistic row with the server's authoritative id.
+      const created = await serverCreateJob({
+        name: job.name,
+        color: job.color,
+        rate: job.rate,
+        nightRate: job.nightRate,
+      })
       set((s) => ({
-        jobs: s.jobs.map((j) => (j.id === optimisticId ? created : j)),
+        jobs: s.jobs.map((j) => (j.id === tempId ? created : j)),
       }))
     } catch (err) {
       console.error('[useJobsStore.addJob] DB write failed', err)
-      // Roll back the optimistic add.
-      set((s) => ({ jobs: s.jobs.filter((j) => j.id !== optimisticId) }))
+      set((s) => ({ jobs: s.jobs.filter((j) => j.id !== tempId) }))
     }
   },
 
   updateJob: async (id, updates) => {
     const before = get().jobs.find((j) => j.id === id)
     if (!before) return
-    // Optimistic merge.
     const merged: Job = { ...before, ...updates }
     set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? merged : j)) }))
     try {
@@ -116,7 +105,6 @@ export const useJobsStore = create<JobsState>((set, get) => ({
       set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? updated : j)) }))
     } catch (err) {
       console.error('[useJobsStore.updateJob] DB update failed', err)
-      // Roll back.
       set((s) => ({ jobs: s.jobs.map((j) => (j.id === id ? before : j)) }))
     }
   },
@@ -125,14 +113,12 @@ export const useJobsStore = create<JobsState>((set, get) => ({
     const before = get().jobs
     const removed = before.find((j) => j.id === id)
     if (!removed) return
-    // Optimistic remove.
     set((s) => ({ jobs: s.jobs.filter((j) => j.id !== id) }))
     try {
       const res = await serverDeleteJob(id)
       if (!res || res.count === 0) throw new Error('Server delete returned 0 rows')
     } catch (err) {
       console.error('[useJobsStore.removeJob] DB delete failed', err)
-      // Roll back — re-insert at the position it had.
       set((s) => {
         const idx = before.findIndex((j) => j.id === id)
         if (idx < 0) return { jobs: [...s.jobs, removed] }
