@@ -24,10 +24,11 @@ import type { Prisma } from '@prisma/client'
 
 export type SeqPrefix = 's' | 'tpl' | 'j'
 
+// Database table names (from Prisma @@map — raw SQL must use actual DB names)
 const TABLE: Record<SeqPrefix, string> = {
-  s: 'userShift',
-  tpl: 'userTemplate',
-  j: 'userJob',
+  s: 'user_shifts',
+  tpl: 'user_templates',
+  j: 'user_jobs',
 }
 
 /** Derive the next seq number for userId + prefix by reading the DB.
