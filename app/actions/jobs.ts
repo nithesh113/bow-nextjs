@@ -105,10 +105,11 @@ export async function createJob(data: JobData): Promise<JobRow> {
     )
   }
 
+  // Use handle for the ID prefix (e.g. nithesh_j1). Store UUID as userId FK.
   const id =
     rawId ||
     (await prisma.$transaction(async (tx) =>
-      makeUserRowId(dbId, 'j', tx as any),
+      makeUserRowId(handle ?? dbId, 'j', tx as any),
     ))
 
   const row = await prisma.userJob.create({
